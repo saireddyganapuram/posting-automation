@@ -34,8 +34,8 @@ export const postsAPI = {
   schedule: (userId, content, scheduledTime, imageUrl = null, hasImage = false, postType = 'static', engagementFeatures = {}) => 
     api.post('/posts/schedule', { userId, content, scheduledTime, imageUrl, hasImage, postType, engagementFeatures }),
   getScheduled: (userId) => api.get(`/posts/scheduled/${userId}`),
-  update: (postId, content, scheduledTime) => 
-    api.put(`/posts/${postId}`, { content, scheduledTime }),
+  update: (postId, content, scheduledTime, imageUrl = null, hasImage = false) => 
+    api.put(`/posts/${postId}`, { content, scheduledTime, imageUrl, hasImage }),
   delete: (postId) => api.delete(`/posts/${postId}`),
 };
 

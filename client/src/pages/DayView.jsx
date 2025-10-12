@@ -13,6 +13,9 @@ export default function DayView() {
   const [editingPost, setEditingPost] = useState(null)
   const [editContent, setEditContent] = useState('')
   const [editTime, setEditTime] = useState('')
+  const [editImageUrl, setEditImageUrl] = useState('')
+  const [editHasImage, setEditHasImage] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
 
@@ -42,12 +45,48 @@ export default function DayView() {
     setEditingPost(post._id)
     setEditContent(post.content)
     setEditTime(new Date(post.scheduledTime).toISOString().slice(0, 16))
+    setEditImageUrl(post.imageUrl || '')
+    setEditHasImage(post.hasImage || false)
+  }
+
+  const handleImageUpload = async (file) => {
+    if (!file) return
+    
+    setUploadingImage(true)
+    try {
+      const formData = new FormData()
+      formData.append('image', file)
+      
+      const response = await fetch('http://localhost:5000/api/posts/upload-image', {
+        method: 'POST',
+        body: formData
+      })
+      
+      const data = await response.json()
+      if (data.imageUrl) {
+        setEditImageUrl(data.imageUrl)
+        setEditHasImage(true)
+      }
+    } catch (error) {
+      console.error('Error uploading image:', error)
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
+  const handleRemoveImage = () => {
+    setEditImageUrl('')
+    setEditHasImage(false)
   }
 
   const handleSaveEdit = async (postId) => {
     try {
-      await postsAPI.update(postId, editContent, editTime)
+      await postsAPI.update(postId, editContent, editTime, editImageUrl, editHasImage)
       setEditingPost(null)
+      setEditContent('')
+      setEditTime('')
+      setEditImageUrl('')
+      setEditHasImage(false)
       setSuccessMessage('Post updated successfully!')
       setShowSuccess(true)
       loadDayPosts()
@@ -154,6 +193,53 @@ export default function DayView() {
                   <div className="text-sm text-gray-500">
                     {editContent.length}/3000 characters
                   </div>
+                  
+                  {/* Image editing section */}
+                  <div className="border rounded-lg p-4">
+                    <h4 className="font-medium mb-3">Image</h4>
+                    
+                    {editHasImage && editImageUrl ? (
+                      <div className="space-y-3">
+                        <img 
+                          src={editImageUrl.startsWith('http') ? editImageUrl : `http://localhost:5000${editImageUrl}`}
+                          alt="Post image" 
+                          className="w-full max-w-md rounded-lg"
+                        />
+                        <div className="flex space-x-2">
+                          <label className="bg-blue-600 text-white px-3 py-1 rounded text-sm cursor-pointer hover:bg-blue-700">
+                            Replace Image
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => handleImageUpload(e.target.files[0])}
+                              className="hidden"
+                              disabled={uploadingImage}
+                            />
+                          </label>
+                          <button
+                            onClick={handleRemoveImage}
+                            className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
+                          >
+                            Remove Image
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="bg-blue-600 text-white px-3 py-2 rounded cursor-pointer hover:bg-blue-700 inline-block">
+                          {uploadingImage ? 'Uploading...' : 'Upload Image'}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleImageUpload(e.target.files[0])}
+                            className="hidden"
+                            disabled={uploadingImage}
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                  
                   <input
                     type="datetime-local"
                     value={editTime}
@@ -165,8 +251,9 @@ export default function DayView() {
                     <button
                       onClick={() => handleSaveEdit(post._id)}
                       className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                      disabled={uploadingImage}
                     >
-                      Save
+                      {uploadingImage ? 'Saving...' : 'Save'}
                     </button>
                     <button
                       onClick={() => setEditingPost(null)}

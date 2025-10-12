@@ -1,6 +1,36 @@
 const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const Post = require('../models/Post');
 const router = express.Router();
+
+// Configure multer for image uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = 'uploads/images';
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
 
 // Schedule a new LinkedIn post
 router.post('/schedule', async (req, res) => {
@@ -39,7 +69,7 @@ router.get('/scheduled/:userId', async (req, res) => {
   try {
     const posts = await Post.find({ 
       userId: req.params.userId,
-      status: { $in: ['scheduled', 'failed'] }
+      status: { $in: ['scheduled', 'failed', 'posted'] }
     }).sort({ scheduledTime: 1 });
     
     res.json(posts || []);
@@ -49,14 +79,46 @@ router.get('/scheduled/:userId', async (req, res) => {
   }
 });
 
+// Upload image endpoint
+router.post('/upload-image', (req, res) => {
+  upload.single('image')(req, res, (err) => {
+    if (err) {
+      console.error('Multer error:', err);
+      return res.status(400).json({ error: err.message });
+    }
+    
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No image file provided' });
+      }
+      
+      const imageUrl = `/uploads/images/${req.file.filename}`;
+      res.json({ imageUrl });
+    } catch (error) {
+      console.error('Image upload error:', error);
+      res.status(500).json({ error: 'Failed to upload image' });
+    }
+  });
+});
+
 // Update a scheduled post
 router.put('/:postId', async (req, res) => {
   try {
-    const { content, scheduledTime } = req.body;
+    const { content, scheduledTime, imageUrl, hasImage } = req.body;
+    
+    const updateData = {
+      content,
+      scheduledTime: new Date(scheduledTime)
+    };
+    
+    if (hasImage !== undefined) {
+      updateData.hasImage = hasImage;
+      updateData.imageUrl = hasImage ? imageUrl : null;
+    }
     
     const post = await Post.findByIdAndUpdate(
       req.params.postId,
-      { content, scheduledTime: new Date(scheduledTime) },
+      updateData,
       { new: true }
     );
 

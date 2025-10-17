@@ -10,15 +10,18 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  // Legacy fields - kept for backward compatibility
   linkedinId: String,
   linkedinName: String,
   linkedinAccessToken: String,
   linkedinRefreshToken: String,
-  linkedinMemberUrn: String, // Store urn:li:member:123456789
+  linkedinMemberUrn: String,
   isLinkedinConnected: {
     type: Boolean,
     default: false
   },
+  // New multi-account support
+  defaultLinkedInAccount: String, // Reference to LinkedInAccount _id
   // Temporary OAuth data for session reliability
   tempCodeVerifier: String,
   tempState: String,

@@ -18,6 +18,9 @@ export default function Header() {
               <Link to="/calendar" className="text-gray-700 hover:text-blue-600">
                 Calendar
               </Link>
+              <Link to="/history" className="text-gray-700 hover:text-blue-600">
+                Post History
+              </Link>
               <UserButton />
             </SignedIn>
             

@@ -43,9 +43,11 @@ app.use(session({
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/linkedin', require('./routes/linkedin'));
+app.use('/api/linkedin-accounts', require('./routes/linkedinAccounts'));
 app.use('/api/chatbot', require('./routes/chatbot'));
 app.use('/api/posts', require('./routes/tweets'));
 app.use('/api/business', require('./routes/business'));
+app.use('/api/interactions', require('./routes/interactions'));
 
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI)

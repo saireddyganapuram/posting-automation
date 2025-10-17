@@ -3,29 +3,95 @@ const fs = require('fs');
 const path = require('path');
 const Post = require('../models/Post');
 const User = require('../models/User');
+const LinkedInAccount = require('../models/LinkedInAccount');
 
 // Function to fetch and update LinkedIn member URN
-async function refreshLinkedInMemberUrn(user) {
+async function refreshLinkedInMemberUrn(linkedinAccount) {
   try {
     const response = await axios.get('https://api.linkedin.com/v2/me', {
-      headers: { 'Authorization': `Bearer ${user.linkedinAccessToken}` }
+      headers: { 'Authorization': `Bearer ${linkedinAccount.linkedinAccessToken}` }
     });
     
     const userId = response.data.id;
     const memberUrn = `urn:li:person:${userId}`;
     console.log('Refreshed LinkedIn member URN:', memberUrn);
     
-    // Update user with new URN
-    await User.findOneAndUpdate(
-      { clerkId: user.clerkId },
-      { linkedinMemberUrn: memberUrn }
-    );
+    // Update LinkedInAccount with new URN
+    if (linkedinAccount._id) {
+      await LinkedInAccount.findByIdAndUpdate(
+        linkedinAccount._id,
+        { linkedinMemberUrn: memberUrn }
+      );
+    } else {
+      // Fallback for legacy user model
+      await User.findOneAndUpdate(
+        { clerkId: linkedinAccount.clerkId },
+        { linkedinMemberUrn: memberUrn }
+      );
+    }
     
     return memberUrn;
   } catch (error) {
     console.error('Failed to refresh LinkedIn member URN:', error.response?.data || error.message);
     return null;
   }
+}
+
+// Function to post to a specific LinkedIn account
+async function postToLinkedInAccount(post, linkedinAccount) {
+  let memberUrn = linkedinAccount.linkedinMemberUrn;
+  if (!memberUrn) {
+    memberUrn = await refreshLinkedInMemberUrn(linkedinAccount);
+    if (!memberUrn) {
+      throw new Error('LinkedIn member URN not found');
+    }
+  }
+  
+  // Handle image upload if needed
+  let assetUrn = null;
+  if (post.hasImage && post.imageUrl) {
+    const imagePath = path.join(__dirname, '..', post.imageUrl.replace('/uploads/', 'uploads/'));
+    if (fs.existsSync(imagePath)) {
+      assetUrn = await uploadImageToLinkedIn(imagePath, linkedinAccount.linkedinAccessToken, memberUrn);
+      if (!assetUrn) {
+        throw new Error('Failed to upload image');
+      }
+    }
+  }
+  
+  // Create post data
+  const postData = {
+    author: memberUrn,
+    lifecycleState: 'PUBLISHED',
+    specificContent: {
+      'com.linkedin.ugc.ShareContent': {
+        shareCommentary: { text: post.content },
+        shareMediaCategory: assetUrn ? 'IMAGE' : 'NONE'
+      }
+    },
+    visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' }
+  };
+  
+  if (assetUrn) {
+    postData.specificContent['com.linkedin.ugc.ShareContent'].media = [{
+      status: 'READY',
+      description: { text: 'Generated image for LinkedIn post' },
+      media: assetUrn,
+      title: { text: 'Post Image' }
+    }];
+  }
+  
+  // Post to LinkedIn
+  const response = await axios.post('https://api.linkedin.com/v2/ugcPosts', postData, {
+    headers: {
+      'Authorization': `Bearer ${linkedinAccount.linkedinAccessToken}`,
+      'Content-Type': 'application/json',
+      'X-Restli-Protocol-Version': '2.0.0'
+    }
+  });
+  
+  console.log(`✅ Posted to ${linkedinAccount.linkedinName}: ${response.data.id}`);
+  return response.data.id;
 }
 
 // Function to upload image to LinkedIn
@@ -125,25 +191,91 @@ async function checkAndPostScheduledPosts() {
           continue;
         }
 
-        if (!user.linkedinAccessToken) {
-          console.log(`User ${user.clerkId} has no LinkedIn access token`);
+        // Handle multi-account posts
+        if (post.isMultiAccount && post.linkedinAccountIds?.length > 0) {
+          // Post to multiple accounts
+          const accounts = await LinkedInAccount.find({ 
+            _id: { $in: post.linkedinAccountIds },
+            isActive: true 
+          });
+          
+          let successCount = 0;
+          const postResults = [];
+          
+          for (const account of accounts) {
+            try {
+              await postToLinkedInAccount(post, account);
+              postResults.push({ accountId: account._id, status: 'posted', postedAt: new Date() });
+              successCount++;
+            } catch (error) {
+              console.error(`Failed to post to account ${account.linkedinName}:`, error.message);
+              postResults.push({ 
+                accountId: account._id, 
+                status: 'failed', 
+                errorMessage: error.message 
+              });
+            }
+          }
+          
+          // Update post with results
+          await Post.findByIdAndUpdate(post._id, {
+            status: successCount > 0 ? 'posted' : 'failed',
+            postedAccounts: postResults,
+            errorMessage: successCount === 0 ? 'Failed to post to all accounts' : null
+          });
+          
+          console.log(`Multi-account post completed: ${successCount}/${accounts.length} successful`);
+          continue;
+        }
+        
+        // Single account post logic
+        let linkedinAccount;
+        if (post.linkedinAccountId) {
+          linkedinAccount = await LinkedInAccount.findById(post.linkedinAccountId);
+        } else {
+          linkedinAccount = await LinkedInAccount.findOne({ 
+            userId: post.userId, 
+            isDefault: true, 
+            isActive: true 
+          });
+          
+          if (!linkedinAccount) {
+            linkedinAccount = await LinkedInAccount.findOne({ 
+              userId: post.userId, 
+              isActive: true 
+            });
+          }
+        }
+
+        // If no LinkedInAccount found, try legacy user fields
+        if (!linkedinAccount && user.linkedinAccessToken) {
+          console.log('Using legacy LinkedIn credentials from User model');
+          linkedinAccount = {
+            linkedinAccessToken: user.linkedinAccessToken,
+            linkedinMemberUrn: user.linkedinMemberUrn,
+            linkedinName: user.linkedinName,
+            linkedinId: user.linkedinId
+          };
+        }
+
+        if (!linkedinAccount || !linkedinAccount.linkedinAccessToken) {
+          console.log(`No LinkedIn account found for user ${user.clerkId}`);
           await Post.findByIdAndUpdate(post._id, {
             status: 'failed',
-            errorMessage: 'LinkedIn not connected'
+            errorMessage: 'LinkedIn account not found or not connected'
           });
           continue;
         }
 
-        console.log(`Posting to LinkedIn for user: ${user.linkedinName || user.clerkId}`);
-        console.log(`LinkedIn ID: ${user.linkedinId}`);
-        console.log(`LinkedIn Member URN: ${user.linkedinMemberUrn}`);
-        console.log(`Access Token exists: ${!!user.linkedinAccessToken}`);
+        console.log(`Posting to LinkedIn account: ${linkedinAccount.linkedinName || linkedinAccount.linkedinId}`);
+        console.log(`LinkedIn Member URN: ${linkedinAccount.linkedinMemberUrn}`);
+        console.log(`Access Token exists: ${!!linkedinAccount.linkedinAccessToken}`);
         
         // Ensure we have the member URN
-        let memberUrn = user.linkedinMemberUrn;
+        let memberUrn = linkedinAccount.linkedinMemberUrn;
         if (!memberUrn) {
-          console.log(`Missing LinkedIn member URN for user ${user.clerkId}, attempting to refresh...`);
-          memberUrn = await refreshLinkedInMemberUrn(user);
+          console.log(`Missing LinkedIn member URN, attempting to refresh...`);
+          memberUrn = await refreshLinkedInMemberUrn(linkedinAccount);
           
           if (!memberUrn) {
             await Post.findByIdAndUpdate(post._id, {
@@ -165,7 +297,7 @@ async function checkAndPostScheduledPosts() {
             const stats = fs.statSync(imagePath);
             console.log('Image size:', stats.size, 'bytes');
             
-            assetUrn = await uploadImageToLinkedIn(imagePath, user.linkedinAccessToken, memberUrn);
+            assetUrn = await uploadImageToLinkedIn(imagePath, linkedinAccount.linkedinAccessToken, memberUrn);
             if (!assetUrn) {
               throw new Error('Failed to upload image to LinkedIn');
             }
@@ -208,7 +340,7 @@ async function checkAndPostScheduledPosts() {
         
         const response = await axios.post('https://api.linkedin.com/v2/ugcPosts', postData, {
           headers: {
-            'Authorization': `Bearer ${user.linkedinAccessToken}`,
+            'Authorization': `Bearer ${linkedinAccount.linkedinAccessToken}`,
             'Content-Type': 'application/json',
             'X-Restli-Protocol-Version': '2.0.0'
           }

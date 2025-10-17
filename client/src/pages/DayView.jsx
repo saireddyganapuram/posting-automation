@@ -29,10 +29,16 @@ export default function DayView() {
     try {
       const response = await postsAPI.getScheduled(user.id)
       const selectedDate = new Date(date)
+      const now = new Date()
+      
       const dayPosts = response.data.filter(post => {
         const postDate = new Date(post.scheduledTime)
-        return postDate.toDateString() === selectedDate.toDateString()
+        const isSameDate = postDate.toDateString() === selectedDate.toDateString()
+        const isFuture = postDate > now
+        // Only show future posts or currently scheduled posts
+        return isSameDate && (isFuture || post.status === 'scheduled')
       })
+      
       setPosts(dayPosts.sort((a, b) => new Date(a.scheduledTime) - new Date(b.scheduledTime)))
     } catch (error) {
       console.error('Error loading day posts:', error)
@@ -152,7 +158,8 @@ export default function DayView() {
 
       {posts.length === 0 ? (
         <div className="text-center py-8">
-          <p className="text-gray-600">No posts scheduled for this day.</p>
+          <p className="text-gray-600">No future posts scheduled for this day.</p>
+          <p className="text-sm text-gray-500 mt-2">Only upcoming scheduled posts are shown here.</p>
         </div>
       ) : (
         <div className="space-y-4">

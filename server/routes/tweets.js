@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const Post = require('../models/Post');
+const LinkedInAccount = require('../models/LinkedInAccount');
 const router = express.Router();
 
 // Configure multer for image uploads
@@ -35,7 +36,7 @@ const upload = multer({
 // Schedule a new LinkedIn post
 router.post('/schedule', async (req, res) => {
   try {
-    const { userId, content, scheduledTime, imageUrl, hasImage, postType, engagementFeatures } = req.body;
+    const { userId, content, scheduledTime, imageUrl, hasImage, postType, engagementFeatures, linkedinAccountId } = req.body;
 
     if (!userId || !content || !scheduledTime) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -53,6 +54,7 @@ router.post('/schedule', async (req, res) => {
       hasImage: hasImage || false,
       postType: postType || 'static',
       engagementFeatures: engagementFeatures || {},
+      linkedinAccountId: linkedinAccountId || null,
       platform: 'linkedin'
     });
 
@@ -64,13 +66,79 @@ router.post('/schedule', async (req, res) => {
   }
 });
 
+// Schedule post to all connected LinkedIn accounts
+router.post('/schedule-all', async (req, res) => {
+  try {
+    const { userId, content, scheduledTime, imageUrl, hasImage, postType, engagementFeatures } = req.body;
+
+    if (!userId || !content || !scheduledTime) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    if (content.length > 3000) {
+      return res.status(400).json({ error: 'Post content exceeds 3000 characters' });
+    }
+
+    // Get all active LinkedIn accounts for the user
+    const accounts = await LinkedInAccount.find({ 
+      userId: userId, 
+      isActive: true 
+    });
+
+    if (accounts.length === 0) {
+      return res.status(400).json({ error: 'No LinkedIn accounts connected' });
+    }
+
+    // Create single post for all accounts
+    const post = new Post({
+      userId,
+      content,
+      scheduledTime: new Date(scheduledTime),
+      imageUrl: imageUrl || null,
+      hasImage: hasImage || false,
+      postType: postType || 'static',
+      engagementFeatures: engagementFeatures || {},
+      linkedinAccountIds: accounts.map(acc => acc._id.toString()),
+      isMultiAccount: true,
+      platform: 'linkedin'
+    });
+
+    await post.save();
+
+    res.status(201).json({ 
+      message: `Post scheduled to ${accounts.length} LinkedIn accounts`,
+      post: post,
+      accountCount: accounts.length
+    });
+  } catch (error) {
+    console.error('Schedule all posts error:', error);
+    res.status(500).json({ error: 'Failed to schedule posts to all accounts' });
+  }
+});
+
+// Get user's LinkedIn accounts
+router.get('/linkedin-accounts/:userId', async (req, res) => {
+  try {
+    const accounts = await LinkedInAccount.find({ 
+      userId: req.params.userId,
+      isActive: true 
+    }).select('_id linkedinName accountType isDefault');
+    
+    res.json(accounts || []);
+  } catch (error) {
+    console.error('Get LinkedIn accounts error:', error);
+    res.status(500).json({ error: 'Failed to fetch LinkedIn accounts', data: [] });
+  }
+});
+
 // Get scheduled posts for a user
 router.get('/scheduled/:userId', async (req, res) => {
   try {
     const posts = await Post.find({ 
       userId: req.params.userId,
       status: { $in: ['scheduled', 'failed', 'posted'] }
-    }).sort({ scheduledTime: 1 });
+    }).populate('linkedinAccountId', 'linkedinName accountType')
+      .sort({ scheduledTime: 1 });
     
     res.json(posts || []);
   } catch (error) {

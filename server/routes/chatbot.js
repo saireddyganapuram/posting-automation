@@ -5,6 +5,41 @@ const fs = require('fs');
 const path = require('path');
 const router = express.Router();
 
+// Function to create a simple text-based image as fallback
+function createFallbackImage(text, filename) {
+  try {
+    // Create a simple SVG image with text
+    const svgContent = `
+      <svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+            <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+          </linearGradient>
+        </defs>
+        <rect width="512" height="512" fill="url(#grad)"/>
+        <text x="256" y="256" font-family="Arial, sans-serif" font-size="24" font-weight="bold" 
+              text-anchor="middle" dominant-baseline="middle" fill="white">
+          ${text.substring(0, 50)}...
+        </text>
+      </svg>
+    `;
+    
+    const uploadsDir = path.join(__dirname, '../uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    
+    const filepath = path.join(uploadsDir, filename);
+    fs.writeFileSync(filepath, svgContent);
+    
+    return `/uploads/${filename}`;
+  } catch (error) {
+    console.error('Fallback image creation failed:', error);
+    return null;
+  }
+}
+
 // Initialize Gemini AI for text generation
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const textModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -163,14 +198,54 @@ Tweet:`;
     }
     
     console.log('Using image prompt:', imagePrompt);
-    console.log('Generating image with Hugging Face...');
+    console.log('Generating image...');
     
-    // Generate image using free API (Pollinations.ai)
-    const imageApiUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=512&height=512&model=flux`;
+    let hfResponse;
     
-    const hfResponse = await axios.get(imageApiUrl, {
-      responseType: 'arraybuffer'
-    });
+    // Try multiple image generation services
+    const imageServices = [
+      {
+        name: 'Pollinations.ai',
+        url: `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=512&height=512`
+      },
+      {
+        name: 'Picsum (placeholder)',
+        url: 'https://picsum.photos/512/512'
+      }
+    ];
+    
+    for (const service of imageServices) {
+      try {
+        console.log(`Trying ${service.name}...`);
+        hfResponse = await axios.get(service.url, {
+          responseType: 'arraybuffer',
+          timeout: 10000 // 10 second timeout
+        });
+        console.log(`✅ Image generated successfully with ${service.name}`);
+        break;
+      } catch (serviceError) {
+        console.log(`❌ ${service.name} failed:`, serviceError.message);
+        if (service === imageServices[imageServices.length - 1]) {
+          // Create a simple fallback image
+        console.log('Creating fallback image...');
+        const fallbackFilename = `fallback-image-${Date.now()}.svg`;
+        const fallbackImageUrl = createFallbackImage(imagePrompt, fallbackFilename);
+        
+        if (fallbackImageUrl) {
+          res.json({ 
+            tweet: generatedTweet,
+            imageUrl: fallbackImageUrl,
+            hasImage: true,
+            fallback: true,
+            message: 'Used fallback image generation'
+          });
+          return;
+        }
+        
+        throw new Error('All image services and fallback failed');
+        }
+      }
+    }
     
     // Create uploads directory if it doesn't exist
     const uploadsDir = path.join(__dirname, '../uploads');
@@ -193,23 +268,47 @@ Tweet:`;
     });
     
   } catch (error) {
-    console.error('Gemini image generation error:', error);
+    console.error('Image generation error:', error.message);
     
-    // Fallback to text-only
-    const templates = [
-      `Exploring ${req.body.prompt} and its incredible potential! 🚀 #Innovation`,
-      `Just discovered something fascinating about ${req.body.prompt}! 💡 #Future`
-    ];
-    
-    const fallbackTweet = templates[Math.floor(Math.random() * templates.length)];
-    
-    res.json({ 
-      tweet: fallbackTweet,
-      imageUrl: null,
-      hasImage: false,
-      fallback: true,
-      error: 'Image generation failed: ' + error.message
-    });
+    // Try to generate text-only content if image fails
+    try {
+      const textOnlyPrompt = `Create an engaging LinkedIn post about: ${req.body.prompt}\n\nRequirements:\n- Keep under 280 characters\n- Make it professional and engaging\n- Include 1-2 relevant hashtags\n- Use appropriate emojis\n\nPost:`;
+      
+      const textResult = await textModel.generateContent(textOnlyPrompt);
+      const textResponse = await textResult.response;
+      let fallbackTweet = textResponse.text().trim();
+      
+      fallbackTweet = fallbackTweet.replace(/^["']|["']$/g, '');
+      fallbackTweet = fallbackTweet.replace(/^Post:\s*/i, '');
+      
+      if (fallbackTweet.length > 280) {
+        fallbackTweet = fallbackTweet.substring(0, 277) + '...';
+      }
+      
+      res.json({ 
+        tweet: fallbackTweet,
+        imageUrl: null,
+        hasImage: false,
+        fallback: true,
+        error: 'Image generation failed, generated text-only post'
+      });
+    } catch (textError) {
+      // Final fallback with templates
+      const templates = [
+        `Exploring ${req.body.prompt} and its incredible potential! 🚀 #Innovation`,
+        `Just discovered something fascinating about ${req.body.prompt}! 💡 #Future`
+      ];
+      
+      const fallbackTweet = templates[Math.floor(Math.random() * templates.length)];
+      
+      res.json({ 
+        tweet: fallbackTweet,
+        imageUrl: null,
+        hasImage: false,
+        fallback: true,
+        error: 'Both image and AI text generation failed'
+      });
+    }
   }
 });
 

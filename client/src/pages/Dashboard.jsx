@@ -2,6 +2,7 @@ import { useUser } from '@clerk/clerk-react'
 import { useState, useEffect } from 'react'
 import { linkedinAPI, chatbotAPI, postsAPI } from '../services/api'
 import SuccessPopup from '../components/SuccessPopup'
+import LinkedInAccounts from '../components/LinkedInAccounts'
 
 export default function Dashboard() {
   const { user } = useUser()
@@ -15,6 +16,10 @@ export default function Dashboard() {
   const [includeImage, setIncludeImage] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
+  const [selectedAccountId, setSelectedAccountId] = useState(null)
+  const [accountCount, setAccountCount] = useState(0)
+  const [selectedAccountIds, setSelectedAccountIds] = useState([])
+  const [accounts, setAccounts] = useState([])
 
   useEffect(() => {
     if (user?.id) {
@@ -133,10 +138,10 @@ export default function Dashboard() {
   }
 
   const handleSchedulePost = async () => {
-    if (!generatedPost || !scheduledTime) return
+    if (!generatedPost || !scheduledTime || !selectedAccountId) return
     
     try {
-      await postsAPI.schedule(user.id, generatedPost, scheduledTime, imageUrl, !!imageUrl)
+      await postsAPI.schedule(user.id, generatedPost, scheduledTime, imageUrl, !!imageUrl, 'static', {}, selectedAccountId)
       setSuccessMessage('Post scheduled successfully!')
       setShowSuccess(true)
       setGeneratedPost('')
@@ -150,45 +155,45 @@ export default function Dashboard() {
     }
   }
 
+  const handleScheduleToSelectedAccounts = async () => {
+    if (!generatedPost || !scheduledTime || selectedAccountIds.length === 0) return
+    
+    try {
+      if (selectedAccountIds.length === 1) {
+        // Single account
+        await postsAPI.schedule(user.id, generatedPost, scheduledTime, imageUrl, !!imageUrl, 'static', {}, selectedAccountIds[0])
+        setSuccessMessage('Post scheduled successfully!')
+      } else {
+        // Multiple accounts - use schedule-all with selected accounts
+        const response = await postsAPI.scheduleToAll(user.id, generatedPost, scheduledTime, imageUrl, !!imageUrl, 'static', {})
+        setSuccessMessage(`Post scheduled to ${selectedAccountIds.length} LinkedIn accounts!`)
+      }
+      
+      setShowSuccess(true)
+      setGeneratedPost('')
+      setImageUrl('')
+      setScheduledTime('')
+      setPrompt('')
+      setSelectedAccountIds([])
+    } catch (error) {
+      console.error('Error scheduling to selected accounts:', error)
+      setSuccessMessage('Failed to schedule post')
+      setShowSuccess(true)
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-8">Welcome, {user?.firstName}!</h1>
       
-      {/* LinkedIn Connection Status */}
-      <div className="bg-white rounded-lg shadow p-6 mb-8">
-        <h2 className="text-xl font-semibold mb-4">LinkedIn Account</h2>
-        {linkedinConnected ? (
-          <div className="space-y-3">
-            <div className="flex items-center text-green-600">
-              <span className="w-3 h-3 bg-green-500 rounded-full mr-2"></span>
-              Connected to LinkedIn
-            </div>
-            <div className="flex gap-2">
-              <button 
-                onClick={handleTestPost}
-                className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 text-sm"
-              >
-                Test Post
-              </button>
-              <button 
-                onClick={handleDisconnectLinkedin}
-                className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 text-sm"
-              >
-                Disconnect LinkedIn
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div>
-            <p className="text-gray-600 mb-4">Connect your LinkedIn account to start scheduling posts</p>
-            <button 
-              onClick={handleConnectLinkedin}
-              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-            >
-              Connect LinkedIn
-            </button>
-          </div>
-        )}
+      {/* LinkedIn Accounts Management */}
+      <div className="mb-8">
+        <LinkedInAccounts 
+          onAccountSelect={setSelectedAccountId}
+          selectedAccountId={selectedAccountId}
+          onAccountCountChange={setAccountCount}
+          onAccountsChange={setAccounts}
+        />
       </div>
 
       {/* AI Post Generator */}
@@ -238,7 +243,7 @@ export default function Dashboard() {
                 </div>
               )}
               
-              <div className="flex gap-3 items-end">
+              <div className="space-y-3">
                 <div className="flex-1">
                   <label className="block text-sm font-medium mb-1">Schedule for:</label>
                   <input
@@ -249,17 +254,61 @@ export default function Dashboard() {
                     className="w-full p-2 border rounded"
                   />
                 </div>
+                
+                {/* Account Selection */}
+                {accounts.length > 0 && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium mb-2">Select Accounts to Post:</label>
+                    <div className="space-y-2 max-h-32 overflow-y-auto border rounded p-3">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedAccountIds.length === accounts.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedAccountIds(accounts.map(acc => acc.id))
+                            } else {
+                              setSelectedAccountIds([])
+                            }
+                          }}
+                          className="rounded"
+                        />
+                        <span className="font-medium text-blue-600">Select All ({accounts.length} accounts)</span>
+                      </label>
+                      <hr className="my-2" />
+                      {accounts.map(account => (
+                        <label key={account.id} className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedAccountIds.includes(account.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedAccountIds([...selectedAccountIds, account.id])
+                              } else {
+                                setSelectedAccountIds(selectedAccountIds.filter(id => id !== account.id))
+                              }
+                            }}
+                            className="rounded"
+                          />
+                          <span>{account.name}</span>
+                          {account.isDefault && <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Default</span>}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
                 <button 
-                  onClick={handleSchedulePost}
-                  disabled={!scheduledTime || !linkedinConnected}
-                  className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50"
+                  onClick={handleScheduleToSelectedAccounts}
+                  disabled={!scheduledTime || selectedAccountIds.length === 0}
+                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 w-full"
                 >
-                  Schedule Post
+                  Schedule to {selectedAccountIds.length} Selected Account{selectedAccountIds.length !== 1 ? 's' : ''}
                 </button>
               </div>
               
-              {!linkedinConnected && (
-                <p className="text-red-600 text-sm mt-2">Connect LinkedIn to schedule posts</p>
+              {selectedAccountIds.length === 0 && (
+                <p className="text-amber-600 text-sm mt-2">💡 Select one or more accounts to schedule your post</p>
               )}
             </div>
           )}

@@ -5,6 +5,24 @@ const postSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  linkedinAccountId: {
+    type: String,
+    required: false // Optional for backward compatibility
+  },
+  linkedinAccountIds: [{
+    type: String,
+    required: false // For multi-account posts
+  }],
+  isMultiAccount: {
+    type: Boolean,
+    default: false
+  },
+  postedAccounts: [{
+    accountId: String,
+    status: { type: String, enum: ['posted', 'failed'], default: 'posted' },
+    postedAt: Date,
+    errorMessage: String
+  }],
   content: {
     type: String,
     required: true,
@@ -19,7 +37,7 @@ const postSchema = new mongoose.Schema({
     enum: ['scheduled', 'posted', 'failed'],
     default: 'scheduled'
   },
-  linkedinId: String,
+  linkedinId: String, // Legacy field
   platform: {
     type: String,
     enum: ['linkedin'],

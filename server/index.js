@@ -48,6 +48,7 @@ app.use('/api/chatbot', require('./routes/chatbot'));
 app.use('/api/posts', require('./routes/tweets'));
 app.use('/api/business', require('./routes/business'));
 app.use('/api/interactions', require('./routes/interactions'));
+app.use('/api/engagement', require('./routes/engagement'));
 
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI)

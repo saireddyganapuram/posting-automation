@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { linkedinAPI, chatbotAPI, postsAPI } from '../services/api'
 import SuccessPopup from '../components/SuccessPopup'
 import LinkedInAccounts from '../components/LinkedInAccounts'
+import LinkedInEngagement from '../components/LinkedInEngagement'
 
 export default function Dashboard() {
   const { user } = useUser()
@@ -194,6 +195,11 @@ export default function Dashboard() {
           onAccountCountChange={setAccountCount}
           onAccountsChange={setAccounts}
         />
+      </div>
+
+      {/* LinkedIn Engagement Automation */}
+      <div className="mb-8">
+        <LinkedInEngagement />
       </div>
 
       {/* AI Post Generator */}

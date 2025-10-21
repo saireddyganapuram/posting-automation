@@ -47,20 +47,31 @@ class LinkedInAutomation {
   async likePost(postUrl) {
     try {
       console.log('Navigating to post:', postUrl);
-      await this.page.goto(postUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await this.page.waitForSelector('button', { timeout: 10000 });
-      await wait(2000);
+      await this.page.goto(postUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+      await wait(3000);
       
       console.log('Looking for like button...');
-      const likeButton = await this.page.$('button[aria-label*="React Like"]');
-      if (likeButton) {
-        console.log('Clicking like button...');
-        await likeButton.click();
-        await wait(1000);
-        console.log('Post liked successfully!');
-        return true;
+      // Try multiple selectors
+      const selectors = [
+        'button[aria-label*="Like"]',
+        'button[aria-label*="React Like"]',
+        'button.react-button__trigger',
+        'button[data-control-name="like"]',
+        '.social-actions-button[aria-label*="Like"]'
+      ];
+      
+      for (const selector of selectors) {
+        const button = await this.page.$(selector);
+        if (button) {
+          console.log('Found like button with selector:', selector);
+          await button.click();
+          await wait(2000);
+          console.log('Post liked successfully!');
+          return true;
+        }
       }
-      console.log('Like button not found');
+      
+      console.log('Like button not found with any selector');
       return false;
     } catch (error) {
       console.error('Like post error:', error.message);

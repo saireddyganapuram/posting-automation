@@ -6,6 +6,7 @@ import Calendar from './pages/Calendar'
 import Landing from './pages/Landing'
 import DayView from './pages/DayView'
 import PostHistory from './pages/PostHistory'
+import Engagement from './pages/Engagement'
 
 function ProtectedRoute({ children }) {
   return (
@@ -40,6 +41,11 @@ export default function App() {
         <Route path="/history" element={
           <ProtectedRoute>
             <PostHistory />
+          </ProtectedRoute>
+        } />
+        <Route path="/engagement" element={
+          <ProtectedRoute>
+            <Engagement />
           </ProtectedRoute>
         } />
       </Routes>

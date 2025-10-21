@@ -21,6 +21,9 @@ export default function Header() {
               <Link to="/history" className="text-gray-700 hover:text-blue-600">
                 Post History
               </Link>
+              <Link to="/engagement" className="text-gray-700 hover:text-blue-600">
+                Engagement
+              </Link>
               <UserButton />
             </SignedIn>
             

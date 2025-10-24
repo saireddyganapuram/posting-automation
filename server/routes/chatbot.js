@@ -56,89 +56,77 @@ if (process.env.HUGGINGFACE_API_KEY && process.env.HUGGINGFACE_API_KEY !== 'your
 }
 
 router.post('/generate', async (req, res) => {
-  try {
-    const { prompt, userId, postType = 'static' } = req.body;
+  let retries = 3;
+  
+  while (retries > 0) {
+    try {
+      const { prompt, userId, postType = 'static' } = req.body;
 
-    if (!prompt) {
-      return res.status(400).json({ error: 'Prompt is required' });
-    }
+      if (!prompt) {
+        return res.status(400).json({ error: 'Prompt is required' });
+      }
 
-    // Get business context for personalization
-    const BusinessContext = require('../models/BusinessContext');
-    const context = await BusinessContext.findOne({ userId }) || {};
+      const BusinessContext = require('../models/BusinessContext');
+      const context = await BusinessContext.findOne({ userId }) || {};
 
-    // Create personalized prompt based on business context
-    let tweetPrompt = `Create a ${postType} Twitter tweet about: ${prompt}\n\n`;
-    
-    if (context.businessName) {
-      tweetPrompt += `Business: ${context.businessName}\n`;
-    }
-    if (context.industry) {
-      tweetPrompt += `Industry: ${context.industry}\n`;
-    }
-    if (context.targetAudience) {
-      tweetPrompt += `Target Audience: ${context.targetAudience}\n`;
-    }
-    if (context.tone) {
-      tweetPrompt += `Tone: ${context.tone}\n`;
-    }
-    
-    tweetPrompt += `\nRequirements:\n- Keep under 280 characters\n`;
-    
-    if (postType === 'dynamic') {
-      tweetPrompt += `- Make it HIGHLY engaging and interactive\n- Include a question or call-to-action\n- Encourage replies and engagement\n`;
-    } else {
-      tweetPrompt += `- Make it informative and professional\n- Focus on value and insights\n`;
-    }
-    
-    if (context.contentPreferences?.includeHashtags) {
-      tweetPrompt += `- Include 1-2 relevant hashtags\n`;
-    }
-    if (context.contentPreferences?.includeEmojis) {
-      tweetPrompt += `- Use 1-2 appropriate emojis\n`;
-    }
-    
-    tweetPrompt += `\nTweet:`;
+      let tweetPrompt = `Create a ${postType} Twitter tweet about: ${prompt}\n\n`;
+      
+      if (context.businessName) tweetPrompt += `Business: ${context.businessName}\n`;
+      if (context.industry) tweetPrompt += `Industry: ${context.industry}\n`;
+      if (context.targetAudience) tweetPrompt += `Target Audience: ${context.targetAudience}\n`;
+      if (context.tone) tweetPrompt += `Tone: ${context.tone}\n`;
+      
+      tweetPrompt += `\nRequirements:\n- Keep under 280 characters\n`;
+      
+      if (postType === 'dynamic') {
+        tweetPrompt += `- Make it HIGHLY engaging and interactive\n- Include a question or call-to-action\n- Encourage replies and engagement\n`;
+      } else {
+        tweetPrompt += `- Make it informative and professional\n- Focus on value and insights\n`;
+      }
+      
+      if (context.contentPreferences?.includeHashtags) tweetPrompt += `- Include 1-2 relevant hashtags\n`;
+      if (context.contentPreferences?.includeEmojis) tweetPrompt += `- Use 1-2 appropriate emojis\n`;
+      
+      tweetPrompt += `\nTweet:`;
 
-    console.log('Generating personalized tweet...');
-    const result = await textModel.generateContent(tweetPrompt);
-    const response = await result.response;
-    let generatedTweet = response.text().trim();
+      console.log(`Generating tweet (attempt ${4 - retries}/3)...`);
+      const result = await textModel.generateContent(tweetPrompt);
+      const response = await result.response;
+      let generatedTweet = response.text().trim();
 
-    // Clean up the response
-    generatedTweet = generatedTweet.replace(/^["']|["']$/g, '');
-    generatedTweet = generatedTweet.replace(/^Tweet:\s*/i, '');
-    
-    if (generatedTweet.length > 280) {
-      generatedTweet = generatedTweet.substring(0, 277) + '...';
+      generatedTweet = generatedTweet.replace(/^["']|["']$/g, '').replace(/^Tweet:\s*/i, '');
+      if (generatedTweet.length > 280) generatedTweet = generatedTweet.substring(0, 277) + '...';
+
+      const engagementFeatures = {
+        hasQuestion: /\?/.test(generatedTweet),
+        hasCall2Action: /(share|comment|reply|tell us|what do you think|let me know)/i.test(generatedTweet),
+        hasHashtags: /#\w+/.test(generatedTweet)
+      };
+
+      return res.json({ tweet: generatedTweet, postType, engagementFeatures });
+      
+    } catch (error) {
+      console.error(`Gemini API error (${4 - retries}/3):`, error.message);
+      retries--;
+      
+      if (error.message?.includes('503') && retries > 0) {
+        console.log(`Retrying in 2 seconds...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        continue;
+      }
+      
+      const templates = [
+        `Exploring ${req.body.prompt} and its incredible potential! 🚀 #Innovation`,
+        `Just discovered something fascinating about ${req.body.prompt}! 💡 #Future`
+      ];
+      
+      return res.json({ 
+        tweet: templates[Math.floor(Math.random() * templates.length)],
+        fallback: true,
+        postType: req.body.postType || 'static',
+        error: 'AI service temporarily unavailable'
+      });
     }
-
-    // Analyze engagement features
-    const engagementFeatures = {
-      hasQuestion: /\?/.test(generatedTweet),
-      hasCall2Action: /(share|comment|reply|tell us|what do you think|let me know)/i.test(generatedTweet),
-      hasHashtags: /#\w+/.test(generatedTweet)
-    };
-
-    res.json({ 
-      tweet: generatedTweet,
-      postType,
-      engagementFeatures
-    });
-    
-  } catch (error) {
-    console.error('Gemini API error:', error);
-    
-    const templates = [
-      `Exploring ${req.body.prompt} and its incredible potential! 🚀 #Innovation`,
-      `Just discovered something fascinating about ${req.body.prompt}! 💡 #Future`
-    ];
-    
-    res.json({ 
-      tweet: templates[Math.floor(Math.random() * templates.length)],
-      fallback: true,
-      postType: req.body.postType || 'static'
-    });
   }
 });
 

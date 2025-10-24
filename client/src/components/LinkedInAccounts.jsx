@@ -19,7 +19,7 @@ export default function LinkedInAccounts({ onAccountSelect, selectedAccountId, o
       const response = await linkedinAccountsAPI.getAccounts(user.id)
       console.log('LinkedIn accounts response:', response.data)
       
-      const accountsData = response.data.accounts || []
+      const accountsData = Array.isArray(response.data) ? response.data : (response.data.accounts || [])
       setAccounts(accountsData)
       
       // Notify parent of account count and accounts list
@@ -46,7 +46,7 @@ export default function LinkedInAccounts({ onAccountSelect, selectedAccountId, o
     try {
       setLoading(true)
       
-      const response = await linkedinAccountsAPI.connectAccount(user.id)
+      const response = await axios.get(`${import.meta.env.VITE_API_URL}/linkedin/auth/${user.id}`)
       
       const width = 600
       const height = 700
@@ -120,7 +120,7 @@ export default function LinkedInAccounts({ onAccountSelect, selectedAccountId, o
   const handleDisconnect = async (accountId) => {
     if (confirm('Are you sure you want to disconnect this LinkedIn account?')) {
       try {
-        await linkedinAccountsAPI.disconnect(user.id, accountId)
+        await axios.delete(`${import.meta.env.VITE_API_URL}/linkedin-accounts/${user.id}/${accountId}`)
         loadAccounts()
         if (selectedAccountId === accountId) {
           onAccountSelect(null)
@@ -134,7 +134,7 @@ export default function LinkedInAccounts({ onAccountSelect, selectedAccountId, o
   const handleDisconnectAll = async () => {
     if (confirm(`Are you sure you want to disconnect all ${accounts.length} LinkedIn accounts?`)) {
       try {
-        await linkedinAccountsAPI.disconnect(user.id, null) // null = disconnect all
+        await axios.post(`${import.meta.env.VITE_API_URL}/linkedin/disconnect/${user.id}`, { accountId: null })
         loadAccounts()
         onAccountSelect(null)
       } catch (error) {

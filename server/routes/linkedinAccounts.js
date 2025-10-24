@@ -71,11 +71,65 @@ router.put('/default/:clerkId/:accountId', ensureUser, async (req, res) => {
   }
 });
 
+// Update account credentials
+router.put('/credentials/:accountId', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+    
+    const account = await LinkedInAccount.findById(req.params.accountId);
+    
+    if (!account) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    
+    // Update email and encrypt password
+    account.linkedinEmail = email;
+    account.linkedinPassword = account.encryptPassword(password);
+    await account.save();
+    
+    res.json({ message: 'Credentials updated successfully', account });
+  } catch (error) {
+    console.error('Update credentials error:', error);
+    res.status(500).json({ error: 'Failed to update credentials' });
+  }
+});
+
+// Delete account credentials
+router.delete('/credentials/:accountId', async (req, res) => {
+  try {
+    const account = await LinkedInAccount.findByIdAndUpdate(
+      req.params.accountId,
+      { linkedinEmail: null, linkedinPassword: null },
+      { new: true }
+    );
+    
+    if (!account) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    
+    res.json({ message: 'Credentials deleted successfully' });
+  } catch (error) {
+    console.error('Delete credentials error:', error);
+    res.status(500).json({ error: 'Failed to delete credentials' });
+  }
+});
+
 // Disconnect LinkedIn account
 router.delete('/:clerkId/:accountId', ensureUser, async (req, res) => {
   try {
+    const { accountId } = req.params;
+    
+    // Check if accountId is valid
+    if (!accountId || accountId === 'null' || accountId === 'undefined') {
+      return res.status(400).json({ error: 'Invalid account ID' });
+    }
+    
     const account = await LinkedInAccount.findOneAndUpdate(
-      { _id: req.params.accountId, userId: req.params.clerkId },
+      { _id: accountId, userId: req.params.clerkId },
       { isActive: false },
       { new: true }
     );

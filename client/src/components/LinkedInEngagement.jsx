@@ -1,41 +1,20 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useUser } from '@clerk/clerk-react'
-import { linkedinAccountsAPI } from '../services/api'
 import axios from 'axios'
 
 export default function LinkedInEngagement() {
   const { user } = useUser()
-  const [accounts, setAccounts] = useState([])
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [postUrl, setPostUrl] = useState('')
   const [comment, setComment] = useState('')
   const [commentary, setCommentary] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
 
-  useEffect(() => {
-    if (user?.id) {
-      loadAccounts()
-    }
-  }, [user])
-
-  const loadAccounts = async () => {
-    try {
-      const response = await linkedinAccountsAPI.getAccounts(user.id)
-      const accountsData = Array.isArray(response.data) ? response.data : []
-      setAccounts(accountsData)
-    } catch (error) {
-      console.error('Error loading accounts:', error)
-      setAccounts([])
-    }
-  }
-
   const handleLike = async () => {
-    if (accounts.length === 0) {
-      setMessage('Please connect a LinkedIn account first')
-      return
-    }
-    if (!postUrl) {
-      setMessage('Please enter post URL')
+    if (!email || !password || !postUrl) {
+      setMessage('Please fill in all required fields')
       return
     }
 
@@ -44,9 +23,9 @@ export default function LinkedInEngagement() {
     
     try {
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/engagement/like`, {
-        accountId: accounts[0]._id,
-        postUrl,
-        userId: user?.id
+        email,
+        password,
+        postUrl
       })
       setMessage('✅ ' + response.data.message)
     } catch (error) {
@@ -57,12 +36,8 @@ export default function LinkedInEngagement() {
   }
 
   const handleComment = async () => {
-    if (accounts.length === 0) {
-      setMessage('Please connect a LinkedIn account first')
-      return
-    }
-    if (!postUrl || !comment) {
-      setMessage('Please enter post URL and comment')
+    if (!email || !password || !postUrl || !comment) {
+      setMessage('Please fill in all required fields including comment')
       return
     }
 
@@ -71,10 +46,10 @@ export default function LinkedInEngagement() {
     
     try {
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/engagement/comment`, {
-        accountId: accounts[0]._id,
+        email,
+        password,
         postUrl,
-        comment,
-        userId: user?.id
+        comment
       })
       setMessage('✅ ' + response.data.message)
       setComment('')
@@ -86,12 +61,8 @@ export default function LinkedInEngagement() {
   }
 
   const handleShare = async () => {
-    if (accounts.length === 0) {
-      setMessage('Please connect a LinkedIn account first')
-      return
-    }
-    if (!postUrl) {
-      setMessage('Please enter post URL')
+    if (!email || !password || !postUrl) {
+      setMessage('Please fill in all required fields')
       return
     }
 
@@ -100,10 +71,10 @@ export default function LinkedInEngagement() {
     
     try {
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/engagement/share`, {
-        accountId: accounts[0]._id,
+        email,
+        password,
         postUrl,
-        commentary,
-        userId: user?.id
+        commentary
       })
       setMessage('✅ ' + response.data.message)
       setCommentary('')
@@ -118,23 +89,49 @@ export default function LinkedInEngagement() {
     <div className="bg-white rounded-lg shadow p-6">
       <h2 className="text-xl font-bold mb-4">🤖 LinkedIn Engagement Automation</h2>
       
+      {/* Warning */}
+      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+        <div className="flex">
+          <div className="flex-shrink-0">
+            <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <div className="ml-3">
+            <p className="text-sm text-yellow-700">
+              <strong>Use at your own risk:</strong> This feature uses browser automation which may violate LinkedIn's Terms of Service. Use responsibly for testing purposes only.
+            </p>
+          </div>
+        </div>
+      </div>
       
       <div className="space-y-4">
         <div>
-          {accounts.length === 0 && (
-            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded mb-4">
-              <p className="text-yellow-800 font-medium">⚠️ No LinkedIn accounts connected</p>
-              <p className="text-yellow-700 text-sm mt-1">Please connect a LinkedIn account from the Dashboard first.</p>
-              <button
-                onClick={() => window.location.href = '/dashboard'}
-                className="mt-2 bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
-              >
-                Go to Dashboard
-              </button>
-            </div>
-          )}
-
           <div>
+            <label className="block text-sm font-medium mb-1">LinkedIn Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="your-email@example.com"
+              className="w-full p-2 border rounded"
+              disabled={loading}
+            />
+          </div>
+
+          <div className="mt-4">
+            <label className="block text-sm font-medium mb-1">LinkedIn Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Your password"
+              className="w-full p-2 border rounded"
+              disabled={loading}
+            />
+          </div>
+
+          <div className="mt-4">
             <label className="block text-sm font-medium mb-1">Post URL</label>
             <input
               type="text"
@@ -199,7 +196,15 @@ export default function LinkedInEngagement() {
           </div>
         )}
 
-
+        <div className="mt-4 p-3 bg-gray-50 rounded border">
+          <p className="text-gray-700 font-medium">ℹ️ Technical Notes:</p>
+          <ul className="text-gray-600 text-sm mt-1 space-y-1 list-disc list-inside">
+            <li>Browser automation using Puppeteer</li>
+            <li>A browser window will open during the process</li>
+            <li>Process may take 10-30 seconds</li>
+            <li>LinkedIn may show security challenges</li>
+          </ul>
+        </div>
       </div>
     </div>
   )

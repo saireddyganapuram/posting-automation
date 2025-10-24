@@ -16,10 +16,10 @@ export const linkedinAPI = {
 
 // LinkedIn Accounts API
 export const linkedinAccountsAPI = {
-  getAccounts: (clerkId) => api.get(`/linkedin-accounts/${clerkId}`),
-  connectAccount: (clerkId) => api.get(`/linkedin-accounts/connect/${clerkId}`),
-  setDefault: (clerkId, accountId) => api.put(`/linkedin-accounts/default/${clerkId}/${accountId}`),
-  disconnect: (clerkId, accountId) => api.delete(`/linkedin-accounts/${clerkId}/${accountId}`),
+  getAccounts: (clerkId) => api.get(`/linkedin/accounts/${clerkId}`),
+  connectAccount: (clerkId) => api.get(`/linkedin/auth/${clerkId}`),
+  setDefault: (clerkId, accountId) => api.post(`/linkedin/set-default/${clerkId}`, { accountId }),
+  disconnect: (clerkId, accountId) => api.post(`/linkedin/disconnect/${clerkId}`, { accountId }),
 };
 
 // Chatbot API

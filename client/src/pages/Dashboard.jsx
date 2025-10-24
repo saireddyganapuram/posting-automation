@@ -266,7 +266,7 @@ export default function Dashboard() {
                           checked={selectedAccountIds.length === accounts.length}
                           onChange={(e) => {
                             if (e.target.checked) {
-                              setSelectedAccountIds(accounts.map(acc => acc._id))
+                              setSelectedAccountIds(accounts.map(acc => acc.id))
                             } else {
                               setSelectedAccountIds([])
                             }
@@ -277,20 +277,20 @@ export default function Dashboard() {
                       </label>
                       <hr className="my-2" />
                       {accounts.map(account => (
-                        <label key={account._id} className="flex items-center gap-2">
+                        <label key={account.id} className="flex items-center gap-2">
                           <input
                             type="checkbox"
-                            checked={selectedAccountIds.includes(account._id)}
+                            checked={selectedAccountIds.includes(account.id)}
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setSelectedAccountIds([...selectedAccountIds, account._id])
+                                setSelectedAccountIds([...selectedAccountIds, account.id])
                               } else {
-                                setSelectedAccountIds(selectedAccountIds.filter(id => id !== account._id))
+                                setSelectedAccountIds(selectedAccountIds.filter(id => id !== account.id))
                               }
                             }}
                             className="rounded"
                           />
-                          <span>{account.linkedinName || account.linkedinEmail}</span>
+                          <span>{account.name}</span>
                           {account.isDefault && <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Default</span>}
                         </label>
                       ))}

@@ -1,116 +1,83 @@
 const express = require('express');
 const LinkedInAutomation = require('../services/linkedinAutomation');
-const LinkedInAccount = require('../models/LinkedInAccount');
 const router = express.Router();
 
-// Note: LinkedIn API doesn't support liking posts with standard OAuth
-// Must use Puppeteer with credentials for engagement actions
-
 router.post('/like', async (req, res) => {
-  let bot;
+  const { email, password, postUrl } = req.body;
+  
+  console.log('Like request received:', { email: email ? 'provided' : 'missing', postUrl });
+  
+  if (!email || !password || !postUrl) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  
+  const bot = new LinkedInAutomation();
+  
   try {
-    const { accountId, postUrl, userId } = req.body;
+    console.log('Starting LinkedIn automation...');
+    await bot.login(email, password);
+    const success = await bot.likePost(postUrl);
+    await bot.close();
     
-    if (!accountId || !postUrl) {
-      return res.status(400).json({ error: 'Account ID and Post URL are required' });
+    if (success) {
+      res.json({ success: true, message: 'Post liked successfully' });
+    } else {
+      res.status(400).json({ error: 'Failed to like post - button not found' });
     }
-    
-    const account = await LinkedInAccount.findById(accountId);
-    if (!account) {
-      return res.status(404).json({ error: 'LinkedIn account not found' });
-    }
-    
-    if (!account.linkedinEmail || !account.linkedinPassword) {
-      return res.status(400).json({ error: 'Credentials required. Please add email/password in Engagement Hub.' });
-    }
-    
-    const password = account.decryptPassword();
-    if (!password) {
-      return res.status(400).json({ error: 'Failed to decrypt password. Please re-enter credentials.' });
-    }
-    
-    bot = new LinkedInAutomation(accountId);
-    await bot.login(account.linkedinEmail, password);
-    await bot.likePost(postUrl);
-    
-    res.json({ success: true, message: 'Post liked successfully' });
   } catch (error) {
-    console.error('Like error:', error.message);
-    res.status(500).json({ error: error.message || 'Failed to like post' });
-  } finally {
-    if (bot) await bot.close().catch(e => console.error('Close error:', e.message));
+    console.error('Engagement error:', error);
+    await bot.close();
+    res.status(500).json({ error: error.message, details: error.stack });
   }
 });
 
 router.post('/comment', async (req, res) => {
-  let bot;
+  const { email, password, postUrl, comment } = req.body;
+  
+  if (!email || !password || !postUrl || !comment) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  
+  const bot = new LinkedInAutomation();
+  
   try {
-    const { accountId, postUrl, comment, userId } = req.body;
+    await bot.login(email, password);
+    const success = await bot.commentOnPost(postUrl, comment);
+    await bot.close();
     
-    if (!accountId || !postUrl || !comment) {
-      return res.status(400).json({ error: 'Account ID, Post URL and comment are required' });
+    if (success) {
+      res.json({ success: true, message: 'Comment posted successfully' });
+    } else {
+      res.status(400).json({ error: 'Failed to post comment' });
     }
-    
-    const account = await LinkedInAccount.findById(accountId);
-    if (!account) {
-      return res.status(404).json({ error: 'LinkedIn account not found' });
-    }
-    
-    if (!account.linkedinEmail || !account.linkedinPassword) {
-      return res.status(400).json({ error: 'Credentials required. Please add email/password in Engagement Hub.' });
-    }
-    
-    const password = account.decryptPassword();
-    if (!password) {
-      return res.status(400).json({ error: 'Failed to decrypt password. Please re-enter credentials.' });
-    }
-    
-    bot = new LinkedInAutomation(accountId);
-    await bot.login(account.linkedinEmail, password);
-    await bot.commentOnPost(postUrl, comment);
-    
-    res.json({ success: true, message: 'Comment posted successfully' });
   } catch (error) {
-    console.error('Comment error:', error.message);
-    res.status(500).json({ error: error.message || 'Failed to post comment' });
-  } finally {
-    if (bot) await bot.close().catch(e => console.error('Close error:', e.message));
+    await bot.close();
+    res.status(500).json({ error: error.message });
   }
 });
 
 router.post('/share', async (req, res) => {
-  let bot;
+  const { email, password, postUrl, commentary } = req.body;
+  
+  if (!email || !password || !postUrl) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  
+  const bot = new LinkedInAutomation();
+  
   try {
-    const { accountId, postUrl, commentary, userId } = req.body;
+    await bot.login(email, password);
+    const success = await bot.sharePost(postUrl, commentary || '');
+    await bot.close();
     
-    if (!accountId || !postUrl) {
-      return res.status(400).json({ error: 'Account ID and Post URL are required' });
+    if (success) {
+      res.json({ success: true, message: 'Post shared successfully' });
+    } else {
+      res.status(400).json({ error: 'Failed to share post' });
     }
-    
-    const account = await LinkedInAccount.findById(accountId);
-    if (!account) {
-      return res.status(404).json({ error: 'LinkedIn account not found' });
-    }
-    
-    if (!account.linkedinEmail || !account.linkedinPassword) {
-      return res.status(400).json({ error: 'Credentials required. Please add email/password in Engagement Hub.' });
-    }
-    
-    const password = account.decryptPassword();
-    if (!password) {
-      return res.status(400).json({ error: 'Failed to decrypt password. Please re-enter credentials.' });
-    }
-    
-    bot = new LinkedInAutomation(accountId);
-    await bot.login(account.linkedinEmail, password);
-    await bot.sharePost(postUrl, commentary || '');
-    
-    res.json({ success: true, message: 'Post shared successfully' });
   } catch (error) {
-    console.error('Share error:', error.message);
-    res.status(500).json({ error: error.message || 'Failed to share post' });
-  } finally {
-    if (bot) await bot.close().catch(e => console.error('Close error:', e.message));
+    await bot.close();
+    res.status(500).json({ error: error.message });
   }
 });
 

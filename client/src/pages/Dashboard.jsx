@@ -183,135 +183,143 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Welcome, {user?.firstName}!</h1>
-      
-      {/* LinkedIn Accounts Management */}
-      <div className="mb-8">
-        <LinkedInAccounts 
-          onAccountSelect={setSelectedAccountId}
-          selectedAccountId={selectedAccountId}
-          onAccountCountChange={setAccountCount}
-          onAccountsChange={setAccounts}
-        />
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* Welcome Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Welcome, {user?.firstName}</h1>
+          <p className="text-gray-600 mt-1">Create and schedule your LinkedIn content</p>
+        </div>
 
-      {/* AI Post Generator */}
-      <div className="bg-white rounded-lg shadow p-6 mb-8">
-        <h2 className="text-xl font-semibold mb-4">AI Post Generator</h2>
-        <div className="space-y-4">
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Describe what you want to post about..."
-            className="w-full p-3 border rounded-lg resize-none h-24"
+        {/* LinkedIn Accounts */}
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">LinkedIn Accounts</h2>
+          <LinkedInAccounts 
+            onAccountSelect={setSelectedAccountId}
+            selectedAccountId={selectedAccountId}
+            onAccountCountChange={setAccountCount}
+            onAccountsChange={setAccounts}
           />
-          <div className="flex items-center gap-4 mb-4">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={includeImage}
-                onChange={(e) => setIncludeImage(e.target.checked)}
-                className="rounded"
-              />
-              <span className="text-sm">Include image description</span>
-            </label>
-          </div>
-          
-          <button
-            onClick={handleGeneratePost}
-            disabled={isGenerating || !prompt.trim()}
-            className="bg-purple-600 text-white px-6 py-2 rounded hover:bg-purple-700 disabled:opacity-50"
-          >
-            {isGenerating ? 'Generating...' : includeImage ? 'Generate Post + Image' : 'Generate Post'}
-          </button>
-          
-          {generatedPost && (
-            <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-              <h3 className="font-medium mb-2">Generated Post:</h3>
-              <p className="text-gray-800 mb-3">{generatedPost}</p>
-              <p className="text-sm text-gray-600 mb-3">{generatedPost.length}/3000 characters</p>
-              
-              {imageUrl && (
-                <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                  <h4 className="font-medium mb-2 text-blue-800">Generated Image:</h4>
-                  <img 
-                    src={`http://localhost:5000${imageUrl}`} 
-                    alt="Generated post image" 
-                    className="w-full max-w-md rounded-lg shadow-md"
-                  />
-                </div>
-              )}
-              
-              <div className="space-y-3">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium mb-1">Schedule for:</label>
-                  <input
-                    type="datetime-local"
-                    value={scheduledTime}
-                    onChange={(e) => setScheduledTime(e.target.value)}
-                    min={new Date().toISOString().slice(0, 16)}
-                    className="w-full p-2 border rounded"
-                  />
-                </div>
+        </div>
+
+        {/* AI Post Generator */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Generate Post with AI</h2>
+              <div className="space-y-4">
+                <textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="Describe what you want to post about..."
+                  className="w-full p-3 border border-gray-300 rounded-lg resize-none h-28 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
                 
-                {/* Account Selection */}
-                {accounts.length > 0 && (
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-2">Select Accounts to Post:</label>
-                    <div className="space-y-2 max-h-32 overflow-y-auto border rounded p-3">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedAccountIds.length === accounts.length}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedAccountIds(accounts.map(acc => acc.id))
-                            } else {
-                              setSelectedAccountIds([])
-                            }
-                          }}
-                          className="rounded"
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={includeImage}
+                    onChange={(e) => setIncludeImage(e.target.checked)}
+                    className="rounded"
+                  />
+                  <span className="text-sm text-gray-700">Include AI-generated image</span>
+                </label>
+                
+                <button
+                  onClick={handleGeneratePost}
+                  disabled={isGenerating || !prompt.trim()}
+                  className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isGenerating ? 'Generating...' : includeImage ? 'Generate Post + Image' : 'Generate Post'}
+                </button>
+                
+                {generatedPost && (
+                  <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <h3 className="font-semibold text-gray-900 mb-3">Generated Post</h3>
+                    
+                    <div className="bg-white p-4 rounded border border-gray-200 mb-4">
+                      <p className="text-gray-800 whitespace-pre-wrap">{generatedPost}</p>
+                      <p className="text-sm text-gray-500 mt-3">{generatedPost.length}/3000 characters</p>
+                    </div>
+                    
+                    {imageUrl && (
+                      <div className="mb-4">
+                        <h4 className="font-medium text-gray-700 mb-2">Generated Image</h4>
+                        <img 
+                          src={`http://localhost:5000${imageUrl}`} 
+                          alt="Generated post image" 
+                          className="w-full rounded-lg"
                         />
-                        <span className="font-medium text-blue-600">Select All ({accounts.length} accounts)</span>
-                      </label>
-                      <hr className="my-2" />
-                      {accounts.map(account => (
-                        <label key={account.id} className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={selectedAccountIds.includes(account.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedAccountIds([...selectedAccountIds, account.id])
-                              } else {
-                                setSelectedAccountIds(selectedAccountIds.filter(id => id !== account.id))
-                              }
-                            }}
-                            className="rounded"
-                          />
-                          <span>{account.name}</span>
-                          {account.isDefault && <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Default</span>}
-                        </label>
-                      ))}
+                      </div>
+                    )}
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Schedule Date & Time</label>
+                        <input
+                          type="datetime-local"
+                          value={scheduledTime}
+                          onChange={(e) => setScheduledTime(e.target.value)}
+                          min={new Date().toISOString().slice(0, 16)}
+                          className="w-full p-2 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      
+                      {accounts.length > 0 && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Select Accounts</label>
+                          <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-300 rounded-lg p-3">
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={selectedAccountIds.length === accounts.length}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedAccountIds(accounts.map(acc => acc.id))
+                                  } else {
+                                    setSelectedAccountIds([])
+                                  }
+                                }}
+                                className="rounded"
+                              />
+                              <span className="text-sm font-medium">Select All ({accounts.length})</span>
+                            </label>
+                            <hr />
+                            {accounts.map(account => (
+                              <label key={account.id} className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedAccountIds.includes(account.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedAccountIds([...selectedAccountIds, account.id])
+                                    } else {
+                                      setSelectedAccountIds(selectedAccountIds.filter(id => id !== account.id))
+                                    }
+                                  }}
+                                  className="rounded"
+                                />
+                                <span className="text-sm">{account.name}</span>
+                                {account.isDefault && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Default</span>}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      <button 
+                        onClick={handleScheduleToSelectedAccounts}
+                        disabled={!scheduledTime || selectedAccountIds.length === 0}
+                        className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Schedule to {selectedAccountIds.length} Account{selectedAccountIds.length !== 1 ? 's' : ''}
+                      </button>
+                      
+                      {selectedAccountIds.length === 0 && (
+                        <p className="text-sm text-amber-600">Select one or more accounts to schedule</p>
+                      )}
                     </div>
                   </div>
                 )}
-                
-                <button 
-                  onClick={handleScheduleToSelectedAccounts}
-                  disabled={!scheduledTime || selectedAccountIds.length === 0}
-                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 w-full"
-                >
-                  Schedule to {selectedAccountIds.length} Selected Account{selectedAccountIds.length !== 1 ? 's' : ''}
-                </button>
-              </div>
-              
-              {selectedAccountIds.length === 0 && (
-                <p className="text-amber-600 text-sm mt-2">💡 Select one or more accounts to schedule your post</p>
-              )}
-            </div>
-          )}
+          </div>
         </div>
       </div>
 

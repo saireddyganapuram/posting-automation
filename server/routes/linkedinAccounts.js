@@ -71,6 +71,64 @@ router.put('/default/:clerkId/:accountId', ensureUser, async (req, res) => {
   }
 });
 
+// Update account credentials
+router.put('/credentials/:accountId', async (req, res) => {
+  try {
+    console.log('PUT /credentials/:accountId called');
+    console.log('Account ID:', req.params.accountId);
+    console.log('Body:', { email: req.body.email, hasPassword: !!req.body.password });
+    
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+    
+    const account = await LinkedInAccount.findById(req.params.accountId);
+    console.log('Account found:', !!account);
+    
+    if (!account) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    
+    // Update email and encrypt password
+    account.linkedinEmail = email;
+    account.linkedinPassword = account.encryptPassword(password);
+    await account.save();
+    
+    console.log('Credentials saved successfully');
+    res.json({ message: 'Credentials updated successfully', account });
+  } catch (error) {
+    console.error('Update credentials error:', error);
+    res.status(500).json({ error: 'Failed to update credentials' });
+  }
+});
+
+// Delete account credentials
+router.delete('/credentials/:accountId', async (req, res) => {
+  try {
+    console.log('DELETE /credentials/:accountId called');
+    console.log('Account ID:', req.params.accountId);
+    
+    const account = await LinkedInAccount.findById(req.params.accountId);
+    console.log('Account found:', !!account);
+    
+    if (!account) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    
+    account.linkedinEmail = '';
+    account.linkedinPassword = '';
+    await account.save();
+    
+    console.log('Credentials deleted successfully');
+    res.json({ message: 'Credentials deleted successfully' });
+  } catch (error) {
+    console.error('Delete credentials error:', error);
+    res.status(500).json({ error: 'Failed to delete credentials' });
+  }
+});
+
 // Disconnect LinkedIn account
 router.delete('/:clerkId/:accountId', ensureUser, async (req, res) => {
   try {

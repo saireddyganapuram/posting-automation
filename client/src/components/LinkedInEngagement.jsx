@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useUser } from '@clerk/clerk-react'
 import axios from 'axios'
 
 export default function LinkedInEngagement() {
   const { user } = useUser()
+  const [accounts, setAccounts] = useState([])
+  const [selectedAccountId, setSelectedAccountId] = useState(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [postUrl, setPostUrl] = useState('')
@@ -11,10 +13,74 @@ export default function LinkedInEngagement() {
   const [commentary, setCommentary] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+  const [isEditing, setIsEditing] = useState(false)
+  const [hasSavedCredentials, setHasSavedCredentials] = useState(false)
+
+  useEffect(() => {
+    if (user?.id) {
+      loadAccounts()
+    }
+  }, [user])
+
+  const loadAccounts = async () => {
+    try {
+      const response = await axios.get(`${import.meta.env.VITE_API_URL}/linkedin-accounts/${user.id}`)
+      const accountsData = Array.isArray(response.data) ? response.data : []
+      setAccounts(accountsData)
+      if (accountsData.length > 0) {
+        setSelectedAccountId(accountsData[0]._id)
+        setHasSavedCredentials(!!accountsData[0].linkedinEmail)
+        setEmail(accountsData[0].linkedinEmail || '')
+      }
+    } catch (error) {
+      console.error('Error loading accounts:', error)
+    }
+  }
+
+  const handleSaveCredentials = async () => {
+    if (!email || !password) {
+      setMessage('❌ Please enter email and password')
+      return
+    }
+    if (!selectedAccountId) {
+      setMessage('❌ Please connect a LinkedIn account first')
+      return
+    }
+
+    try {
+      await axios.put(`${import.meta.env.VITE_API_URL}/linkedin-accounts/credentials/${selectedAccountId}`, {
+        email,
+        password
+      })
+      setMessage('✅ Credentials saved successfully')
+      setPassword('')
+      setIsEditing(false)
+      setHasSavedCredentials(true)
+      loadAccounts()
+    } catch (error) {
+      setMessage('❌ Error: ' + (error.response?.data?.error || error.message))
+    }
+  }
+
+  const handleDeleteCredentials = async () => {
+    if (!confirm('Are you sure you want to delete saved credentials?')) return
+
+    try {
+      await axios.delete(`${import.meta.env.VITE_API_URL}/linkedin-accounts/credentials/${selectedAccountId}`)
+      setMessage('✅ Credentials deleted successfully')
+      setEmail('')
+      setPassword('')
+      setHasSavedCredentials(false)
+      setIsEditing(false)
+      loadAccounts()
+    } catch (error) {
+      setMessage('❌ Error: ' + (error.response?.data?.error || error.message))
+    }
+  }
 
   const handleLike = async () => {
-    if (!email || !password || !postUrl) {
-      setMessage('Please fill in all required fields')
+    if (!selectedAccountId || !postUrl) {
+      setMessage('❌ Please select account and enter post URL')
       return
     }
 
@@ -23,9 +89,9 @@ export default function LinkedInEngagement() {
     
     try {
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/engagement/like`, {
-        email,
-        password,
-        postUrl
+        accountId: selectedAccountId,
+        postUrl,
+        userId: user?.id
       })
       setMessage('✅ ' + response.data.message)
     } catch (error) {
@@ -36,8 +102,8 @@ export default function LinkedInEngagement() {
   }
 
   const handleComment = async () => {
-    if (!email || !password || !postUrl || !comment) {
-      setMessage('Please fill in all required fields including comment')
+    if (!selectedAccountId || !postUrl || !comment) {
+      setMessage('❌ Please fill in all required fields including comment')
       return
     }
 
@@ -46,10 +112,10 @@ export default function LinkedInEngagement() {
     
     try {
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/engagement/comment`, {
-        email,
-        password,
+        accountId: selectedAccountId,
         postUrl,
-        comment
+        comment,
+        userId: user?.id
       })
       setMessage('✅ ' + response.data.message)
       setComment('')
@@ -61,8 +127,8 @@ export default function LinkedInEngagement() {
   }
 
   const handleShare = async () => {
-    if (!email || !password || !postUrl) {
-      setMessage('Please fill in all required fields')
+    if (!selectedAccountId || !postUrl) {
+      setMessage('❌ Please select account and enter post URL')
       return
     }
 
@@ -71,10 +137,10 @@ export default function LinkedInEngagement() {
     
     try {
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/engagement/share`, {
-        email,
-        password,
+        accountId: selectedAccountId,
         postUrl,
-        commentary
+        commentary,
+        userId: user?.id
       })
       setMessage('✅ ' + response.data.message)
       setCommentary('')
@@ -89,47 +155,104 @@ export default function LinkedInEngagement() {
     <div className="bg-white rounded-lg shadow p-6">
       <h2 className="text-xl font-bold mb-4">🤖 LinkedIn Engagement Automation</h2>
       
-      {/* Warning */}
-      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
-        <div className="flex">
-          <div className="flex-shrink-0">
-            <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-          </div>
-          <div className="ml-3">
-            <p className="text-sm text-yellow-700">
-              <strong>Use at your own risk:</strong> This feature uses browser automation which may violate LinkedIn's Terms of Service. Use responsibly for testing purposes only.
-            </p>
-          </div>
-        </div>
-      </div>
-      
       <div className="space-y-4">
-        <div>
+        {/* Account Selection */}
+        {accounts.length > 0 && (
           <div>
-            <label className="block text-sm font-medium mb-1">LinkedIn Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="your-email@example.com"
+            <label className="block text-sm font-medium mb-1">Select LinkedIn Account</label>
+            <select
+              value={selectedAccountId || ''}
+              onChange={(e) => {
+                setSelectedAccountId(e.target.value)
+                const account = accounts.find(acc => acc._id === e.target.value)
+                setHasSavedCredentials(!!account?.linkedinEmail)
+                setEmail(account?.linkedinEmail || '')
+              }}
               className="w-full p-2 border rounded"
-              disabled={loading}
-            />
+            >
+              {accounts.map(account => (
+                <option key={account._id} value={account._id}>
+                  {account.linkedinName || account.linkedinEmail || 'LinkedIn Account'}
+                </option>
+              ))}
+            </select>
           </div>
+        )}
 
-          <div className="mt-4">
-            <label className="block text-sm font-medium mb-1">LinkedIn Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Your password"
-              className="w-full p-2 border rounded"
-              disabled={loading}
-            />
-          </div>
+        {/* Credentials Section */}
+        <div className="border rounded p-4 bg-gray-50">
+          <h3 className="font-medium mb-3">Automation Credentials</h3>
+          
+          {hasSavedCredentials && !isEditing ? (
+            <div>
+              <div className="p-3 bg-green-50 border border-green-200 rounded mb-3">
+                <p className="text-green-800 font-medium">✅ Credentials saved</p>
+                <p className="text-green-700 text-sm mt-1">Email: {email ? email.replace(/(.{2})(.*)(@.*)/, '$1***$3') : '***'}</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                >
+                  Edit Credentials
+                </button>
+                <button
+                  onClick={handleDeleteCredentials}
+                  className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+                >
+                  Delete Credentials
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div>
+                <label className="block text-sm font-medium mb-1">LinkedIn Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="your-email@example.com"
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+
+              <div className="mt-3">
+                <label className="block text-sm font-medium mb-1">LinkedIn Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Your password"
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={handleSaveCredentials}
+                  className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                >
+                  Save Credentials
+                </button>
+                {isEditing && (
+                  <button
+                    onClick={() => {
+                      setIsEditing(false)
+                      setPassword('')
+                    }}
+                    className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Engagement Actions */}
+        <div>
 
           <div className="mt-4">
             <label className="block text-sm font-medium mb-1">Post URL</label>

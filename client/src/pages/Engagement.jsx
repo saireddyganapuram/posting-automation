@@ -11,6 +11,9 @@ export default function Engagement() {
   const [isSearching, setIsSearching] = useState(false)
   const [isEngaging, setIsEngaging] = useState(false)
   const [message, setMessage] = useState('')
+  const [enableLike, setEnableLike] = useState(true)
+  const [enableComment, setEnableComment] = useState(false)
+  const [commentText, setCommentText] = useState('')
 
   const handleSearchPosts = async () => {
     if (!searchTopic.trim() || !user?.id) {
@@ -37,6 +40,17 @@ export default function Engagement() {
 
   const handleEngageSelected = async () => {
     if (selectedPosts.length === 0) return;
+    
+    if (!enableLike && !enableComment) {
+      setMessage('Please select at least one action (Like or Comment)')
+      return;
+    }
+    
+    if (enableComment && !commentText.trim()) {
+      setMessage('Please enter a comment text')
+      return;
+    }
+    
     setIsEngaging(true);
     setMessage('')
     
@@ -45,9 +59,10 @@ export default function Engagement() {
         accountId: user.id,
         posts: selectedPosts,
         actions: { 
-          like: true, 
-          comment: false  // Set to true and pass commentText if you want to enable commenting
-        }
+          like: enableLike, 
+          comment: enableComment
+        },
+        commentText: enableComment ? commentText : undefined
       })
       
       setMessage(`Success! ${response.data.message}`)
@@ -75,8 +90,12 @@ export default function Engagement() {
       <LinkedInEngagement />
 
       {/* Search & Engage Section */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-6">Search & Engage with Posts</h2>
+      <div className="bg-white rounded-lg shadow p-6 mt-6">
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">Search & Engage with Posts</h2>
+        <p className="text-sm text-gray-600 mb-6">
+          Search LinkedIn for posts by topic and engage with them automatically. 
+          <span className="font-medium text-blue-600"> Make sure you've added LinkedIn credentials above first!</span>
+        </p>
         
         <div className="space-y-6">
           {/* Search Input */}
@@ -97,6 +116,53 @@ export default function Engagement() {
               {isSearching ? 'Searching...' : 'Search Posts'}
             </button>
           </div>
+
+          {/* Engagement Options */}
+          {searchResults.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+              <h3 className="font-semibold text-gray-900">Engagement Options</h3>
+              
+              <div className="flex items-center gap-6">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enableLike}
+                    onChange={(e) => setEnableLike(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm font-medium">👍 Like posts</span>
+                </label>
+                
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enableComment}
+                    onChange={(e) => setEnableComment(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm font-medium">💬 Comment on posts</span>
+                </label>
+              </div>
+              
+              {enableComment && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Comment Text (will be posted on all selected posts)
+                  </label>
+                  <textarea
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    placeholder="e.g., Great insights! Thanks for sharing."
+                    className="w-full p-2 border rounded-lg resize-none h-20"
+                    disabled={isEngaging}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    💡 Tip: Use a genuine, thoughtful comment that adds value
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Results */}
           {searchResults.length > 0 && (
@@ -172,12 +238,15 @@ export default function Engagement() {
 
           {/* Usage Tips */}
           <div className="mt-6 p-4 bg-gray-50 rounded-lg border text-sm">
-            <h4 className="font-medium mb-2">Tips:</h4>
+            <h4 className="font-medium mb-2">💡 Tips for Effective Engagement:</h4>
             <ul className="list-disc list-inside space-y-1 text-gray-600">
               <li>Search for relevant LinkedIn posts by topic</li>
               <li>Select posts you want to engage with</li>
-              <li>Click "Engage" to like selected posts</li>
-              <li>Avoid excessive engagement (max 50/day)</li>
+              <li>Choose to Like, Comment, or both</li>
+              <li>Use genuine, thoughtful comments that add value</li>
+              <li>Avoid generic comments like "Nice post" or "Great!"</li>
+              <li>Limit engagement to 20-30 posts per day to avoid rate limiting</li>
+              <li>Space out your engagement throughout the day</li>
             </ul>
           </div>
         </div>

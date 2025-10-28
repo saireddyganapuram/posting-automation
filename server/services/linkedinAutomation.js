@@ -147,10 +147,23 @@ class LinkedInAutomation {
         { waitUntil: 'networkidle2', timeout: 30000 }
       );
 
-      // Wait for initial content load
-      await this.page.waitForSelector('.search-results-container', { timeout: 10000 });
+      console.log('Waiting for search results to load...');
+      // Wait for search results with multiple possible selectors
+      await Promise.race([
+        this.page.waitForSelector('.search-results-container', { timeout: 15000 }),
+        this.page.waitForSelector('.search-results__list', { timeout: 15000 }),
+        this.page.waitForSelector('[data-view-name="search-results-container"]', { timeout: 15000 }),
+        this.page.waitForSelector('.reusable-search__entity-result-list', { timeout: 15000 })
+      ]).catch(() => console.log('Initial selector wait timed out, continuing...'));
+      
+      await wait(5000); // Wait longer for dynamic content to load
+      
+      // Take a screenshot before extraction for debugging
+      await this.takeDebugScreenshot(`before-extraction-${Date.now()}.png`);
+      console.log('Screenshot taken before extraction');
       
       // Scroll to load more posts
+      console.log('Scrolling to load more posts...');
       let previousHeight;
       let scrollAttempts = 0;
       const maxScrolls = 3;
@@ -158,7 +171,7 @@ class LinkedInAutomation {
       while (scrollAttempts < maxScrolls) {
         previousHeight = await this.page.evaluate('document.body.scrollHeight');
         await this.page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
-        await wait(2000); // Use the wait helper function
+        await wait(2000);
         
         const currentHeight = await this.page.evaluate('document.body.scrollHeight');
         if (currentHeight === previousHeight) break;
@@ -166,56 +179,233 @@ class LinkedInAutomation {
         scrollAttempts++;
       }
 
-      // Extract posts with detailed information
-      const posts = await this.page.evaluate(() => {
+      console.log('Extracting post data from page...');
+      
+      // First, let's see what's actually on the page
+      const pageInfo = await this.page.evaluate(() => {
+        return {
+          title: document.title,
+          url: window.location.href,
+          bodyText: document.body.innerText.substring(0, 500),
+          hasSearchContainer: !!document.querySelector('.search-results-container'),
+          hasSearchList: !!document.querySelector('.search-results__list'),
+          hasFeedUpdates: document.querySelectorAll('.feed-shared-update-v2').length,
+          hasResultContainers: document.querySelectorAll('li.reusable-search__result-container').length,
+          allDivClasses: Array.from(document.querySelectorAll('div[class*="search"]')).slice(0, 10).map(d => d.className)
+        };
+      });
+      
+      console.log('Page info:', JSON.stringify(pageInfo, null, 2));
+      
+      // Extract posts with detailed information using multiple selector strategies
+      const posts = await this.page.evaluate((limitCount) => {
         const posts = [];
-        const postElements = document.querySelectorAll('.search-results-container .feed-shared-update-v2');
+        
+        // Try multiple container selectors
+        const containerSelectors = [
+          '.feed-shared-update-v2',  // Try without parent first
+          '.search-results-container .feed-shared-update-v2',
+          '.search-results__list .feed-shared-update-v2',
+          '[data-view-name="search-results-container"] .feed-shared-update-v2',
+          '.reusable-search__entity-result-list .feed-shared-update-v2',
+          'li.reusable-search__result-container',
+          '.entity-result',  // Try entity results
+          '[data-chameleon-result-urn]',  // Try data attributes
+          'div[data-id*="urn:li:activity"]'  // Try activity URNs
+        ];
+        
+        let postElements = [];
+        let usedSelector = '';
+        
+        for (const selector of containerSelectors) {
+          postElements = document.querySelectorAll(selector);
+          if (postElements.length > 0) {
+            console.log(`Found ${postElements.length} posts with selector: ${selector}`);
+            usedSelector = selector;
+            break;
+          } else {
+            console.log(`No posts found with selector: ${selector}`);
+          }
+        }
 
-        postElements.forEach((element) => {
+        if (postElements.length === 0) {
+          console.log('No posts found with any selector');
+          console.log('Available classes on page:', Array.from(document.querySelectorAll('[class]')).slice(0, 20).map(el => el.className).join(', '));
+          return [];
+        }
+
+        postElements.forEach((element, index) => {
           try {
-            // Extract post text
-            const textElement = element.querySelector('.feed-shared-text-view span');
-            const text = textElement ? textElement.innerText.trim() : '';
+            // Extract post text with multiple selectors
+            let text = '';
+            const textSelectors = [
+              '.feed-shared-text__text-view span[dir="ltr"]',
+              '.feed-shared-text-view span',
+              '.feed-shared-inline-show-more-text',
+              '.feed-shared-text',
+              '.break-words'
+            ];
+            
+            for (const selector of textSelectors) {
+              const textElement = element.querySelector(selector);
+              if (textElement && textElement.innerText) {
+                text = textElement.innerText.trim();
+                break;
+              }
+            }
 
-            // Extract post link
-            const linkElement = element.querySelector('a.app-aware-link[href*="/posts/"]') || 
-                              element.querySelector('a.feed-shared-update-v2__content-link');
-            const url = linkElement ? linkElement.href : '';
+            // Extract post URL with multiple strategies
+            let url = '';
+            const urlSelectors = [
+              'a.app-aware-link[href*="/posts/"]',
+              'a[href*="/feed/update/"]',
+              'a.feed-shared-update-v2__content-link',
+              'a[data-control-name="view_post"]',
+              'a[href*="activity-"]',
+              '.update-components-header a[href*="/posts/"]'
+            ];
+            
+            for (const selector of urlSelectors) {
+              const linkElement = element.querySelector(selector);
+              if (linkElement && linkElement.href) {
+                url = linkElement.href;
+                // Clean up URL - remove query parameters
+                url = url.split('?')[0];
+                break;
+              }
+            }
+            
+            // If still no URL, try to find any link with activity ID
+            if (!url) {
+              const allLinks = element.querySelectorAll('a[href]');
+              for (const link of allLinks) {
+                if (link.href.includes('/posts/') || link.href.includes('activity-') || link.href.includes('/feed/update/')) {
+                  url = link.href.split('?')[0];
+                  break;
+                }
+              }
+            }
 
             // Extract author info
-            const authorElement = element.querySelector('.update-components-actor__name');
-            const author = authorElement ? authorElement.innerText.trim() : '';
-
-            // Extract timestamp if available
-            const timeElement = element.querySelector('.update-components-actor__sub-description');
-            const timestamp = timeElement ? timeElement.innerText.trim() : '';
-
-            // Extract engagement counts if available
-            const reactions = element.querySelector('.social-details-social-counts__reactions-count');
-            const comments = element.querySelector('.social-details-social-counts__comments');
+            let author = '';
+            const authorSelectors = [
+              '.update-components-actor__name span[aria-hidden="true"]',
+              '.update-components-actor__name',
+              '.feed-shared-actor__name',
+              '.entity-result__title-text a span'
+            ];
             
-            if (url && text) {
+            for (const selector of authorSelectors) {
+              const authorElement = element.querySelector(selector);
+              if (authorElement && authorElement.innerText) {
+                author = authorElement.innerText.trim();
+                break;
+              }
+            }
+
+            // Extract timestamp
+            let timestamp = '';
+            const timeSelectors = [
+              '.update-components-actor__sub-description',
+              '.feed-shared-actor__sub-description',
+              'time',
+              '.entity-result__secondary-subtitle'
+            ];
+            
+            for (const selector of timeSelectors) {
+              const timeElement = element.querySelector(selector);
+              if (timeElement && timeElement.innerText) {
+                timestamp = timeElement.innerText.trim();
+                break;
+              }
+            }
+
+            // Extract engagement counts
+            const reactionsElement = element.querySelector('.social-details-social-counts__reactions-count');
+            const commentsElement = element.querySelector('.social-details-social-counts__comments');
+            
+            // Only add post if we have at least a URL
+            if (url) {
               posts.push({
-                id: url.match(/(\d+)$/)?.[1] || Date.now().toString(),
-                text: text.length > 300 ? text.slice(0, 300) + '...' : text,
+                id: url.match(/(\d+)$/)?.[1] || `post-${index}-${Date.now()}`,
+                text: text.length > 300 ? text.slice(0, 300) + '...' : (text || 'No text available'),
                 url,
-                author,
-                timestamp,
+                author: author || 'Unknown Author',
+                timestamp: timestamp || 'Recently',
                 engagement: {
-                  reactions: reactions ? reactions.innerText.trim() : '0',
-                  comments: comments ? comments.innerText.trim() : '0'
+                  reactions: reactionsElement ? reactionsElement.innerText.trim() : '0',
+                  comments: commentsElement ? commentsElement.innerText.trim() : '0'
                 }
               });
+              console.log(`Extracted post ${posts.length}: ${url.substring(0, 60)}...`);
+            } else {
+              console.log(`Skipping post ${index} - no URL found`);
             }
           } catch (err) {
-            console.error('Error extracting post data:', err);
+            console.error('Error extracting post data:', err.message);
           }
         });
 
-        return posts.slice(0, 10); // Limit to 10 most relevant posts
-      });
+        return posts.slice(0, limitCount);
+      }, limit);
 
-      console.log(`Found ${posts.length} posts matching topic: ${topic}`);
+      console.log(`Successfully extracted ${posts.length} posts matching topic: ${topic}`);
+      
+      if (posts.length === 0) {
+        console.log('WARNING: No posts were extracted. Trying alternative extraction method...');
+        
+        // Alternative method: Extract ALL links that look like posts
+        const alternativePosts = await this.page.evaluate(() => {
+          const allLinks = Array.from(document.querySelectorAll('a[href]'));
+          const postLinks = allLinks.filter(link => 
+            link.href.includes('/posts/') || 
+            link.href.includes('activity-') ||
+            link.href.includes('/feed/update/')
+          );
+          
+          console.log(`Found ${postLinks.length} links that look like posts`);
+          
+          const uniqueUrls = new Set();
+          const posts = [];
+          
+          postLinks.forEach((link, index) => {
+            const url = link.href.split('?')[0];
+            if (!uniqueUrls.has(url)) {
+              uniqueUrls.add(url);
+              
+              // Try to find nearby text content
+              let text = '';
+              let parent = link.closest('article') || link.closest('li') || link.closest('div[class*="update"]');
+              if (parent) {
+                text = parent.innerText.substring(0, 300);
+              }
+              
+              posts.push({
+                id: `alt-${index}`,
+                text: text || 'No text available',
+                url: url,
+                author: 'Unknown Author',
+                timestamp: 'Recently',
+                engagement: { reactions: '0', comments: '0' }
+              });
+            }
+          });
+          
+          return posts.slice(0, 10);
+        });
+        
+        if (alternativePosts.length > 0) {
+          console.log(`✅ Alternative method found ${alternativePosts.length} posts!`);
+          return alternativePosts;
+        }
+        
+        console.log('WARNING: No posts were extracted. This might be due to:');
+        console.log('1. LinkedIn DOM structure changes');
+        console.log('2. Login issues or rate limiting');
+        console.log('3. No matching posts for the topic');
+        console.log('4. CAPTCHA or security check');
+      }
+      
       return posts;
 
     } catch (error) {
@@ -254,6 +444,19 @@ class LinkedInAutomation {
     }
     
     return results;
+  }
+
+  async takeDebugScreenshot(filename = 'debug-screenshot.png') {
+    try {
+      if (this.page) {
+        const screenshotPath = `./linkedin-sessions/${filename}`;
+        await this.page.screenshot({ path: screenshotPath, fullPage: true });
+        console.log(`Debug screenshot saved to: ${screenshotPath}`);
+        return screenshotPath;
+      }
+    } catch (error) {
+      console.error('Error taking screenshot:', error.message);
+    }
   }
 
   async close() {

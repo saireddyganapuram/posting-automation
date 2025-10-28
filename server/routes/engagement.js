@@ -14,23 +14,34 @@ router.post('/search-posts', async (req, res) => {
       return res.status(400).json({ error: 'Account ID and topic are required' });
     }
     
+    console.log(`[Search Posts] User: ${accountId}, Topic: ${topic}`);
+    
     // Find first LinkedIn account for the user
     const account = await LinkedInAccount.findOne({ userId: accountId, isActive: true });
     if (!account) {
-      return res.status(404).json({ error: 'No active LinkedIn account found' });
+      return res.status(404).json({ error: 'No active LinkedIn account found. Please add LinkedIn credentials in the Engagement Hub.' });
     }
     
     if (!account.linkedinEmail || !account.linkedinPassword) {
-      return res.status(400).json({ error: 'Account credentials required' });
+      return res.status(400).json({ error: 'LinkedIn email and password required. Please add credentials in the Engagement Hub.' });
     }
+    
+    console.log(`[Search Posts] Using account: ${account.linkedinEmail}`);
     
     bot = new LinkedInAutomation();
     await bot.login(account.linkedinEmail, account.decryptPassword());
     const posts = await bot.searchPosts(topic);
     
-    res.json({ posts });
+    // Take debug screenshot if no posts found
+    if (posts.length === 0) {
+      console.log('[Search Posts] No posts found, taking debug screenshot...');
+      await bot.takeDebugScreenshot(`search-debug-${Date.now()}.png`);
+    }
+    
+    console.log(`[Search Posts] Successfully found ${posts.length} posts`);
+    res.json({ posts, count: posts.length });
   } catch (error) {
-    console.error('Search posts error:', error);
+    console.error('[Search Posts] Error:', error);
     res.status(500).json({ error: error.message || 'Failed to search posts' });
   } finally {
     if (bot) await bot.close().catch(console.error);

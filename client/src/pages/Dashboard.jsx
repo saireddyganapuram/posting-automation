@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { linkedinAPI, chatbotAPI, postsAPI } from '../services/api'
 import SuccessPopup from '../components/SuccessPopup'
 import LinkedInAccounts from '../components/LinkedInAccounts'
+// Removed axios import as it's no longer needed
 
 export default function Dashboard() {
   const { user } = useUser()
@@ -19,6 +20,7 @@ export default function Dashboard() {
   const [accountCount, setAccountCount] = useState(0)
   const [selectedAccountIds, setSelectedAccountIds] = useState([])
   const [accounts, setAccounts] = useState([])
+  // Removed search-related states
 
   const checkLinkedinStatus = useCallback(async () => {
     try {
@@ -250,6 +252,8 @@ export default function Dashboard() {
             )}
           </div>
         </div>
+
+        {/* Removed LinkedIn Search & Engage section */}
       </div>
 
       <SuccessPopup

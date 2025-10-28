@@ -1,7 +1,41 @@
 const express = require('express');
 const LinkedInAutomation = require('../services/linkedinAutomation');
 const LinkedInAccount = require('../models/LinkedInAccount');
+const mongoose = require('mongoose');
 const router = express.Router();
+
+// Search posts route
+router.post('/search-posts', async (req, res) => {
+  let bot;
+  try {
+    const { accountId, topic } = req.body;
+    
+    if (!accountId || !topic) {
+      return res.status(400).json({ error: 'Account ID and topic are required' });
+    }
+    
+    // Find first LinkedIn account for the user
+    const account = await LinkedInAccount.findOne({ userId: accountId, isActive: true });
+    if (!account) {
+      return res.status(404).json({ error: 'No active LinkedIn account found' });
+    }
+    
+    if (!account.linkedinEmail || !account.linkedinPassword) {
+      return res.status(400).json({ error: 'Account credentials required' });
+    }
+    
+    bot = new LinkedInAutomation();
+    await bot.login(account.linkedinEmail, account.decryptPassword());
+    const posts = await bot.searchPosts(topic);
+    
+    res.json({ posts });
+  } catch (error) {
+    console.error('Search posts error:', error);
+    res.status(500).json({ error: error.message || 'Failed to search posts' });
+  } finally {
+    if (bot) await bot.close().catch(console.error);
+  }
+});
 
 router.post('/like', async (req, res) => {
   let bot;
@@ -108,6 +142,37 @@ router.post('/share', async (req, res) => {
     res.status(500).json({ error: error.message || 'Failed to share post' });
   } finally {
     if (bot) await bot.close().catch(e => console.error('Close error:', e.message));
+  }
+});
+
+router.post('/engage-multiple', async (req, res) => {
+  let bot;
+  try {
+    const { accountId, posts, actions = { like: true, comment: false }, commentText } = req.body;
+    
+    if (!accountId || !posts?.length) {
+      return res.status(400).json({ error: 'Account ID and posts are required' });
+    }
+    
+    const account = await LinkedInAccount.findOne({ userId: accountId, isActive: true });
+    if (!account) {
+      return res.status(404).json({ error: 'No active LinkedIn account found' });
+    }
+    
+    bot = new LinkedInAutomation();
+    await bot.login(account.linkedinEmail, account.decryptPassword());
+    const results = await bot.engageWithPosts(posts, actions, commentText);
+    
+    const successful = results.filter(r => r.success).length;
+    res.json({ 
+      message: `Successfully engaged with ${successful} out of ${posts.length} posts`,
+      results 
+    });
+  } catch (error) {
+    console.error('Bulk engagement error:', error);
+    res.status(500).json({ error: error.message || 'Failed to engage with posts' });
+  } finally {
+    if (bot) await bot.close().catch(console.error);
   }
 });
 

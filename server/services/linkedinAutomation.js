@@ -236,21 +236,107 @@ class LinkedInAutomation {
 
         postElements.forEach((element, index) => {
           try {
-            // Extract post text with multiple selectors
+            // Extract post text with multiple selectors - more specific to actual post content
             let text = '';
+            
+            // Helper function to clean extracted text
+            const cleanText = (rawText) => {
+              if (!rawText) return '';
+              
+              let cleaned = rawText.trim();
+              
+              // Filter out common UI text that's not post content
+              const unwantedPhrases = [
+                'See translation',
+                'See more',
+                'See less',
+                '…see more',
+                '... see more',
+                'Like\n',
+                'Comment\n',
+                'Share\n',
+                'Send\n',
+                'Repost\n',
+                'Follow\n',
+                'Connect\n',
+                'Show all comments',
+                'Report this post',
+                'Copy link to post',
+                'Embed this post'
+              ];
+              
+              // Remove unwanted phrases
+              unwantedPhrases.forEach(phrase => {
+                cleaned = cleaned.replace(new RegExp(phrase, 'gi'), '');
+              });
+              
+              // Remove multiple consecutive newlines
+              cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+              
+              // Remove leading/trailing whitespace again
+              cleaned = cleaned.trim();
+              
+              return cleaned;
+            };
+            
             const textSelectors = [
-              '.feed-shared-text__text-view span[dir="ltr"]',
-              '.feed-shared-text-view span',
+              '.feed-shared-update-v2__description',
+              '.feed-shared-text__text-view',
               '.feed-shared-inline-show-more-text',
+              '.update-components-text',
               '.feed-shared-text',
               '.break-words'
             ];
             
             for (const selector of textSelectors) {
               const textElement = element.querySelector(selector);
-              if (textElement && textElement.innerText) {
-                text = textElement.innerText.trim();
-                break;
+              if (textElement) {
+                // Try to get just the text content, avoiding nested elements
+                let rawText = '';
+                
+                // First try to get direct text nodes only
+                const walker = document.createTreeWalker(
+                  textElement,
+                  NodeFilter.SHOW_TEXT,
+                  null,
+                  false
+                );
+                
+                let node;
+                while (node = walker.nextNode()) {
+                  // Skip text from buttons and links
+                  const parent = node.parentElement;
+                  if (parent && !parent.matches('button, a.app-aware-link[data-control-name]')) {
+                    rawText += node.textContent + ' ';
+                  }
+                }
+                
+                // If that didn't work, fall back to innerText
+                if (!rawText.trim()) {
+                  rawText = textElement.innerText;
+                }
+                
+                text = cleanText(rawText);
+                
+                // Only accept text that's substantial (more than just a few words)
+                if (text.length > 20) {
+                  break;
+                }
+              }
+            }
+            
+            // If still no good text, try to get text from the entire post container but clean it
+            if (!text || text.length < 20) {
+              const contentContainer = element.querySelector('.feed-shared-update-v2__description-wrapper') || 
+                                      element.querySelector('.update-components-text-view');
+              if (contentContainer) {
+                text = cleanText(contentContainer.innerText);
+                // Take first substantial paragraph
+                const paragraphs = text.split('\n').filter(p => p.trim().length > 20);
+                if (paragraphs.length > 0) {
+                  text = paragraphs[0];
+                }
+                text = text.substring(0, 500); // Limit length
               }
             }
 
@@ -326,7 +412,7 @@ class LinkedInAutomation {
             
             // Only add post if we have at least a URL
             if (url) {
-              posts.push({
+              const postData = {
                 id: url.match(/(\d+)$/)?.[1] || `post-${index}-${Date.now()}`,
                 text: text.length > 300 ? text.slice(0, 300) + '...' : (text || 'No text available'),
                 url,
@@ -336,8 +422,12 @@ class LinkedInAutomation {
                   reactions: reactionsElement ? reactionsElement.innerText.trim() : '0',
                   comments: commentsElement ? commentsElement.innerText.trim() : '0'
                 }
-              });
-              console.log(`Extracted post ${posts.length}: ${url.substring(0, 60)}...`);
+              };
+              posts.push(postData);
+              console.log(`Extracted post ${posts.length}:`);
+              console.log(`  Author: ${postData.author}`);
+              console.log(`  Text preview: ${postData.text.substring(0, 100)}...`);
+              console.log(`  URL: ${url.substring(0, 60)}...`);
             } else {
               console.log(`Skipping post ${index} - no URL found`);
             }

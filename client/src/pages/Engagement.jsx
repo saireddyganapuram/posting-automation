@@ -29,9 +29,22 @@ export default function Engagement() {
         accountId: user.id, // Add user's Clerk ID as accountId
         topic: searchTopic.trim()
       })
-      setSearchResults(response.data.posts || [])
+      
+      console.log('Search response:', response.data)
+      console.log('Posts array:', response.data.posts)
+      console.log('Posts length:', response.data.posts?.length)
+      
+      const posts = response.data.posts || []
+      setSearchResults(posts)
       setSelectedPosts([])
+      
+      if (posts.length === 0) {
+        setMessage('No posts found. Try a different topic or check your LinkedIn credentials.')
+      } else {
+        setMessage(`Found ${posts.length} posts!`)
+      }
     } catch (error) {
+      console.error('Search error:', error)
       setMessage('Error searching posts: ' + (error.response?.data?.error || error.message))
     } finally {
       setIsSearching(false)
@@ -179,8 +192,8 @@ export default function Engagement() {
               </div>
 
               <div className="space-y-3 max-h-96 overflow-y-auto">
-                {searchResults.map(post => (
-                  <div key={post.id} className="flex items-start gap-3 p-4 border rounded-lg hover:bg-gray-50">
+                {searchResults.map((post, index) => (
+                  <div key={post.id || `post-${index}`} className="flex items-start gap-3 p-4 border rounded-lg hover:bg-gray-50">
                     <input
                       type="checkbox"
                       checked={selectedPosts.some(p => p.url === post.url)}
@@ -196,8 +209,8 @@ export default function Engagement() {
                     <div className="flex-1">
                       <div className="flex justify-between items-start mb-2">
                         <div>
-                          <p className="font-medium text-gray-900">{post.author}</p>
-                          <p className="text-sm text-gray-500">{post.timestamp}</p>
+                          <p className="font-medium text-gray-900">{post.author || 'Unknown Author'}</p>
+                          <p className="text-sm text-gray-500">{post.timestamp || 'Recently'}</p>
                         </div>
                         <div className="text-sm text-gray-500">
                           {post.engagement?.reactions && (
@@ -208,18 +221,27 @@ export default function Engagement() {
                           )}
                         </div>
                       </div>
-                      <p className="text-gray-800 mb-2">{post.text}</p>
-                      <a 
-                        href={post.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1"
-                      >
-                        View Post 
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                      </a>
+                      <p className="text-gray-800 mb-2 whitespace-pre-wrap">{post.text || 'No text available'}</p>
+                      <div className="flex gap-3 items-center">
+                        {post.url && (
+                          <a 
+                            href={post.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1"
+                          >
+                            View Post 
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                          </a>
+                        )}
+                        {post.text && post.text !== 'No text available' && (
+                          <span className="text-xs text-gray-400">
+                            ({post.text.length} chars)
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -230,7 +252,7 @@ export default function Engagement() {
           {/* Message Display */}
           {message && (
             <div className={`p-3 rounded ${
-              message.startsWith('Success') ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+              message.startsWith('Success') || message.startsWith('Found') ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
             }`}>
               {message}
             </div>

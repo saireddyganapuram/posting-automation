@@ -14,10 +14,11 @@ export default function Engagement() {
   const [enableLike, setEnableLike] = useState(true)
   const [enableComment, setEnableComment] = useState(false)
   const [commentText, setCommentText] = useState('')
+  const [activeAccountId, setActiveAccountId] = useState(null) // <-- NEW
 
   const handleSearchPosts = async () => {
     if (!searchTopic.trim() || !user?.id) {
-      setMessage('Please enter a topic')
+      setMessage('Please enter a topic and ensure you are logged in')
       return
     }
     
@@ -25,32 +26,71 @@ export default function Engagement() {
     setMessage('')
     
     try {
-      const response = await axios.post(`${import.meta.env.VITE_API_URL}/engagement/search-posts`, {
-        accountId: user.id, // Add user's Clerk ID as accountId
-        topic: searchTopic.trim()
-      })
-      
-      console.log('Search response:', response.data)
-      console.log('Posts array:', response.data.posts)
-      console.log('Posts length:', response.data.posts?.length)
-      
-      const posts = response.data.posts || []
-      setSearchResults(posts)
-      setSelectedPosts([])
-      
-      if (posts.length === 0) {
-        setMessage('No posts found. Try a different topic or check your LinkedIn credentials.')
-      } else {
-        setMessage(`Found ${posts.length} posts!`)
+      // 1) Pre-check: ensure user has an active LinkedIn account with credentials
+      const accountsRes = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/linkedin-accounts/${user.id}`,
+        { headers: { 'Content-Type': 'application/json' } }
+      )
+      // support response shapes: [] or { accounts: [...] }
+      let accounts = []
+      if (Array.isArray(accountsRes.data)) {
+        accounts = accountsRes.data
+      } else if (Array.isArray(accountsRes.data?.accounts)) {
+        accounts = accountsRes.data.accounts
+      } else if (Array.isArray(accountsRes.data?.data)) {
+        accounts = accountsRes.data.data
       }
-    } catch (error) {
-      console.error('Search error:', error)
-      setMessage('Error searching posts: ' + (error.response?.data?.error || error.message))
-    } finally {
-      setIsSearching(false)
-    }
-  }
 
+      // prefer an explicit active account, otherwise fall back to the first account
+      const active = accounts.find(a => a.isActive) || accounts[0]
+      if (!active) {
+        setMessage('No connected LinkedIn account found. Please connect an account in the Engagement Hub.')
+        setIsSearching(false)
+        return
+      }
+      // Save resolved LinkedIn account id for subsequent requests
+      const resolvedAccountId = active._id || active.id || active.id_str || null
+      setActiveAccountId(resolvedAccountId)
+      // Do not check password client-side — server will validate/decrypt credentials securely
+      console.log('Using LinkedIn account for search:', active)
+ 
+      // 2) Perform search
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/engagement/search-posts`,
+        {
+          // pass the resolved LinkedIn account id if available, otherwise fall back to clerk id
+          accountId: resolvedAccountId || user.id,
+           topic: searchTopic.trim()
+         },
+         { headers: { 'Content-Type': 'application/json' } }
+       )
+       
+      console.log('Search response:', response.data)
+       console.log('Posts array:', response.data.posts)
+       console.log('Posts length:', response.data.posts?.length)
+       
+       const posts = response.data.posts || []
+       setSearchResults(posts)
+       setSelectedPosts([])
+       
+       if (posts.length === 0) {
+         setMessage('No posts found. Try a different topic or check your LinkedIn credentials.')
+       } else {
+         setMessage(`Found ${posts.length} posts!`)
+       }
+     } catch (error) {
+       console.error('Search error:', error)
+       const serverMsg = error.response?.data?.error
+       if (error.response?.status === 404) {
+         setMessage('LinkedIn account not found. Please connect your account first.')
+       } else {
+         setMessage(serverMsg ? `Error: ${serverMsg}` : 'Error searching posts: ' + error.message)
+       }
+     } finally {
+       setIsSearching(false)
+     }
+   }
+   
   const handleEngageSelected = async () => {
     if (selectedPosts.length === 0) return;
     
@@ -68,15 +108,35 @@ export default function Engagement() {
     setMessage('')
     
     try {
-      const response = await axios.post(`${import.meta.env.VITE_API_URL}/engagement/engage-multiple`, {
-        accountId: user.id,
-        posts: selectedPosts,
-        actions: { 
-          like: enableLike, 
-          comment: enableComment
+      // Resolve active LinkedIn account and use its _id for backend
+      const accountsRes = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/linkedin-accounts/${user.id}`,
+        { headers: { 'Content-Type': 'application/json' } }
+      )
+      const accounts = Array.isArray(accountsRes.data) ? accountsRes.data : []
+      const active = accounts.find(a => a.isActive) || accounts[0]
+      if (!active) {
+        setMessage('No active LinkedIn account found. Please add credentials in the Engagement Hub above.')
+        return
+      }
+      if (!active.linkedinEmail || !active.linkedinPassword) {
+        setMessage('LinkedIn email/password not set. Please save your credentials in the Engagement Hub above.')
+        return
+      }
+
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/engagement/engage-multiple`,
+        {
+          accountId: active._id || user.id,
+          posts: selectedPosts,
+          actions: { 
+            like: enableLike, 
+            comment: enableComment
+          },
+          commentText: enableComment ? commentText : undefined
         },
-        commentText: enableComment ? commentText : undefined
-      })
+        { headers: { 'Content-Type': 'application/json' } }
+      )
       
       setMessage(`Success! ${response.data.message}`)
       setSelectedPosts([])
@@ -84,7 +144,8 @@ export default function Engagement() {
       // Show detailed results
       console.log('Engagement results:', response.data.results)
     } catch (error) {
-      setMessage('Error engaging with posts: ' + (error.response?.data?.error || error.message))
+      const serverMsg = error.response?.data?.error
+      setMessage(serverMsg ? `Error: ${serverMsg}` : 'Error engaging with posts: ' + error.message)
     } finally {
       setIsEngaging(false)
     }
